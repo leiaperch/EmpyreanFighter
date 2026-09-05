@@ -47,7 +47,7 @@ function loadImg(key, src) {
   im.onerror = () => { /* fallback procédural */ };
   im.src = src;
 }
-if (document.fonts) { document.fonts.load('900 84px "Cinzel Decorative"'); document.fonts.load('700 30px Cinzel'); }
+if (document.fonts) { document.fonts.load('900 66px "Cinzel Decorative"'); document.fonts.load('700 30px Cinzel'); }
 for (const k in ASSETS.stages) loadImg('stage_' + k, ASSETS.stages[k]);
 for (const k in ASSETS.portraits) loadImg('portrait_' + k, ASSETS.portraits[k]);
 
@@ -889,7 +889,7 @@ function drawTitle(c) {
   for (let i = 0; i < 12; i++) { c.rotate(Math.PI / 6); c.beginPath(); c.moveTo(0, 0); c.lineTo(900, -60); c.lineTo(900, 60); c.fill(); }
   c.restore();
   c.textAlign = 'center';
-  c.font = '900 84px "Cinzel Decorative", Cinzel, Impact, Arial Black, sans-serif'; c.lineWidth = 12; c.strokeStyle = '#000'; c.strokeText('EMPYREAN FIGHTER', W / 2, 190);
+  c.font = '900 66px "Cinzel Decorative", Cinzel, Impact, Arial Black, sans-serif'; c.lineWidth = 10; c.strokeStyle = '#000'; c.strokeText('EMPYREAN FIGHTER', W / 2, 190);
   const g2 = c.createLinearGradient(0, 110, 0, 200); g2.addColorStop(0, '#fff3c4'); g2.addColorStop(0.5, '#d4a92c'); g2.addColorStop(1, '#7a4a0a');
   c.fillStyle = g2; c.fillText('EMPYREAN FIGHTER', W / 2, 190);
   c.font = 'bold 30px Cinzel, Impact'; c.fillStyle = FACTIONS.rebels.color; c.fillText('REBELLES', W / 2 - 150, 245);
