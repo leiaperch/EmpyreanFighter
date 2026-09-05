@@ -755,7 +755,7 @@ class AI {
 const NET = {
   active: false, role: null, peer: null, conn: null, code: '', status: '', error: '',
   me: 0, delay: 3, frame: 0, local: {}, remote: {}, inputs: null, waiting: 0, rtt: 0, pingT: 0,
-  hashes: {}, rhashes: {}, desync: false, again: [false, false], ui: 0, sub: 0, input: '',
+  hashes: {}, rhashes: {}, desync: false, again: [false, false], ui: 0, sub: 0, input: '', waitSince: 0,
 };
 function netInputObj() { const o = { cur: {}, prev: {} }; ACTIONS.forEach(a => { o.cur[a] = false; o.prev[a] = false; }); o.held = a => o.cur[a]; o.pressed = a => o.cur[a] && !o.prev[a]; return o; }
 function encodeBits(cur) { let b = 0; ACTIONS.forEach((a, i) => { if (cur[a]) b |= 1 << i; }); return b; }
@@ -797,12 +797,7 @@ function netWire(conn) {
     if (NET.role === 'host') { NET.pingT = performance.now(); netSend({ t: 'ping' }); }
   });
   conn.on('data', netOnData);
-  const bye = () => {
-    if (!NET.active && !NET.conn) return;
-    netClose(); musicStop(); clearInputs();
-    NET.error = 'Adversaire déconnecté'; NET.ui = 0; game.screen = 'online'; game.t = 0;
-  };
-  conn.on('close', bye); conn.on('error', bye);
+  conn.on('close', netDrop); conn.on('error', netDrop);
 }
 function netOnData(m) {
   if (!m || typeof m !== 'object') return;
@@ -817,6 +812,12 @@ function netOnData(m) {
     case 'h': { const mine = NET.hashes[m.f]; if (mine === undefined) NET.rhashes[m.f] = m.h; else if (mine !== m.h) NET.desync = true; break; }
     case 'again': NET.again[1 - NET.me] = true; netTryAgain(); break;
   }
+}
+// Perte de l'adversaire (fermeture WebRTC ou 10 s sans entrée distante)
+function netDrop() {
+  if (!NET.active && !NET.conn) return;
+  netClose(); musicStop(); clearInputs();
+  NET.error = 'Adversaire déconnecté'; NET.ui = 0; NET.sub = 0; game.screen = 'online'; game.t = 0;
 }
 function netTryStart() {
   if (NET.role !== 'host' || !game.sel[0].done || !game.sel[1].done) return;
@@ -835,7 +836,11 @@ function netStep() {
     inputs[0].poll(); const bits = encodeBits(inputs[0].cur);
     NET.local[f + NET.delay] = bits; netSend({ t: 'i', f: f + NET.delay, b: bits });
   }
-  if (NET.remote[f] === undefined) { NET.waiting++; return false; }
+  if (NET.remote[f] === undefined) {
+    if (NET.waiting++ === 0) NET.waitSince = performance.now();
+    else if (performance.now() - NET.waitSince > 10000) netDrop();
+    return false;
+  }
   NET.waiting = 0;
   applyBits(NET.inputs[NET.me], NET.local[f]); applyBits(NET.inputs[1 - NET.me], NET.remote[f]);
   delete NET.local[f - 2]; delete NET.remote[f - 2];
