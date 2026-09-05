@@ -77,9 +77,11 @@ premier frame actif du coup ; les projectiles VFX avancent leur frame avec leur 
 | Perso   | PV   | Marche | Rôle        | Levier principal                                  |
 |---------|------|--------|-------------|---------------------------------------------------|
 | Eira    | 1050 | 3.8    | Half Caster | Vitesse / durée de l'onde de choc (6.5, 64 f)     |
-| Dante   | 1150 | 3.1    | Warrior     | Durée de la forme de lave (900 f), bonus ×1.3     |
+| Dante   | 1150 | 3.1    | Warrior     | Durée de la forme de lave (1800 f), bonus ×1.3    |
 | Saerynn | 1000 | 3.6    | Caster      | Vitesse des éclats (9), portée des pics (560 px)  |
 | Cassius | 950  | 4.3    | Half Caster | Distance de la ruée (11 × 12 f), hits du super (6)|
+| Caliban | 1100 | 3.5    | Half Caster | Durée du poison (300 / 600 f), tic 6 PV / 30 f     |
+| Aureus  | 1050 | 3.6    | Half Caster | Vitesse du rayon (11), hauteur du pilier (260 px) |
 
 ## Playtest — critères de succès v0.1
 
@@ -97,6 +99,7 @@ Conseils finaux = `CHAR_TIPS` (deux phrases par personnage : outil principal, us
 
 ## Changelog
 
+- 0.7 (2026-09-05) : Caliban (Rebelles, putréfaction/poison) et Aureus (Loyalistes, épée de lumière), roster à 6, statut poison, 3 VFX.
 - 0.6 (2026-09-05) : mode tutoriel, découpage par composantes (lames non tronquées), VFX sans voile.
 - 0.5.1 (2026-09-05) : animation de marche arrière dédiée (walkback).
 - 0.5 (2026-09-05) : roster final (Eira, Dante, Saerynn, Cassius), sprites animés 9 actions × 8 frames, VFX en frames, forme de lave de Dante.

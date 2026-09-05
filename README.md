@@ -69,12 +69,16 @@ touches « Joueur 1 ».
 | Faction    | Personnage | Rôle        | Arme / pouvoir                 | Spécial (↓↘→ + coup ou Spécial) | Super (jauge pleine, ↓ + Spécial)     |
 |------------|------------|-------------|--------------------------------|----------------------------------|----------------------------------------|
 | Rebelles   | EIRA       | Half Caster | Hache, ondes de choc           | Onde de choc (vague au sol)      | Séisme (onde des deux côtés)           |
-| Rebelles   | DANTE      | Warrior     | Énorme épée, monstre de lave   | Éruption (avec armure)           | Forme de lave (15 s : +30 % dégâts, aura) |
+| Rebelles   | DANTE      | Warrior     | Énorme épée, monstre de lave   | Éruption (avec armure)           | Forme de lave (Balrog 30 s : +30 % dégâts) |
 | Loyalistes | SAERYNN    | Caster      | Épée longue, contrôle du métal | Éclats d'acier (projectile)      | Forêt de lames (pics sur 560 px)       |
 | Loyalistes | CASSIUS    | Half Caster | Épée noire, ombres             | Pas d'ombre (ruée)               | Nuit tombée (6 coups, écran assombri)  |
+| Rebelles   | CALIBAN    | Half Caster | Poings gantelés, putréfaction  | Toucher putride (poison 5 s)     | Peste (deux côtés, poison 10 s)        |
+| Loyalistes | AUREUS     | Half Caster | Épée à deux mains de lumière   | Rayon sacré (projectile rapide)  | Jugement (pilier de lumière, anti-air) |
 
-Personnages créés sur Artlist par l'auteur ; planches d'animation (10 actions × 8 frames chacun, dont une marche arrière)
-et VFX (8 effets × 8 frames) générés par image-à-image à partir de ces références.
+Personnages créés sur Artlist par l'auteur ;
+**Poison** (Caliban) : 6 PV toutes les 30 frames tant que l'effet dure, ne peut pas mettre KO (plancher 1 PV) ; la victime clignote vert.
+ planches d'animation (10 actions × 8 frames chacun, dont une marche arrière)
+et VFX (11 effets × 8 frames) générés par image-à-image à partir de ces références.
 
 ## Pipeline d'animation
 

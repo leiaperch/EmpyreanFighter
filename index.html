@@ -39,6 +39,8 @@ const ASSETS = {
     dante: 'assets/portrait_dante.jpg',
     saerynn: 'assets/portrait_saerynn.jpg',
     cassius: 'assets/portrait_cassius.jpg',
+    caliban: 'assets/portrait_caliban.jpg',
+    aureus: 'assets/portrait_aureus.jpg',
   },
   music: 'assets/theme.mp3',
 };
@@ -53,7 +55,7 @@ function loadImg(key, src) {
 }
 // ---- Animations : 9 actions × 8 frames par personnage, 8 VFX × 8 frames
 const ANIM_ACTIONS = ['idle', 'walk', 'walkback', 'light', 'heavy', 'kick', 'jump', 'hurt', 'special', 'super'];
-const VFX_NAMES = ['shockwave', 'eruption', 'lava_aura', 'shards', 'spikes', 'shadow', 'slash', 'hit'];
+const VFX_NAMES = ['shockwave', 'eruption', 'lava_aura', 'shards', 'spikes', 'shadow', 'slash', 'hit', 'holy_ray', 'rot', 'pillar'];
 const ANIM = {}, VFX = {}, META = window.ANIM_META || {};
 let assetsTotal = 0, assetsDone = 0;
 function loadFrame(path) {
@@ -62,7 +64,7 @@ function loadFrame(path) {
   im.src = assetUrl(path); return im;
 }
 function loadAnims() {
-  ['eira', 'dante', 'saerynn', 'cassius', 'dante_lava'].forEach(ch => {
+  ['eira', 'dante', 'saerynn', 'cassius', 'aureus', 'caliban', 'dante_lava'].forEach(ch => {
     ANIM[ch] = {};
     ANIM_ACTIONS.forEach(a => { if (ch === 'dante_lava' && a === 'super') return; ANIM[ch][a] = []; for (let i = 1; i <= 8; i++) ANIM[ch][a].push(loadFrame('assets/anim/' + ch + '/' + a + '/f' + i + '.webp')); });
   });
@@ -313,12 +315,35 @@ const CHARS = {
       super:   { name: 'NUIT TOMBÉE', kind: 'dash', dmg: 330, startup: 14, active: 36, recovery: 26, box: { x: 10, y: -160, w: 110, h: 110 }, hitstun: 36, blockstun: 18, kb: 12, dash: 6, multi: 6, frames: [1, 5], anim: 'super', trail: true, knockdown: true, nightfall: true },
     }),
   },
+  caliban: {
+    id: 'caliban', name: 'CALIBAN', faction: 'rebels', title: 'Half Caster',
+    hp: 1100, walk: 3.5, jumpV: -14, gravity: 0.74, scale: 1.02, anim: true,
+    colors: { skin: '#e8d2bd', hair: '#c8722a', top: '#3b2a1e', pants: '#2a1e16', accent: '#7dff4a', glove: '#4a3020' },
+    style: { hair: 'short', armor: true, build: 1.05 },
+    moves: Object.assign(normals(6, { L: 'Direct du gantelet', H: 'Marteau des poings', K: 'Balayage' }), {
+      // le poison (frames) est appliqué par takeHit : 6 PV toutes les 30 frames, ne peut pas mettre KO
+      special: { name: 'TOUCHER PUTRIDE', kind: 'dash', dmg: 90, startup: 12, active: 8, recovery: 22, box: { x: 10, y: -150, w: 90, h: 80 }, hitstun: 24, blockstun: 12, kb: 6, dash: 6, frames: [3, 5], anim: 'special', meterGain: 90, poison: 300, rot: true },
+      super:   { name: 'PESTE', kind: 'slam', dmg: 220, startup: 28, active: 12, recovery: 30, box: { x: -260, y: -120, w: 520, h: 120 }, hitstun: 36, blockstun: 18, kb: 12, frames: [4, 5], anim: 'super', armor: true, knockdown: true, poison: 600, plague: true },
+    }),
+  },
+  aureus: {
+    id: 'aureus', name: 'AUREUS', faction: 'loyalists', title: 'Half Caster',
+    hp: 1050, walk: 3.6, jumpV: -14.5, gravity: 0.72, scale: 1.02, anim: true,
+    colors: { skin: '#e6c1a0', hair: '#3a2a1e', top: '#d8d8e0', pants: '#b8a070', accent: '#ffd85a', glove: '#c0c0c8' },
+    style: { hair: 'short', armor: true, build: 1.0 },
+    moves: Object.assign(normals(26, { L: 'Estoc de lumière', H: 'Fendoir sacré', K: 'Balayage' }), {
+      special: { name: 'RAYON SACRÉ', kind: 'projectile', dmg: 115, startup: 20, active: 2, recovery: 22, hitstun: 24, blockstun: 12, kb: 8, frames: [3, 5], anim: 'special', meterGain: 85,
+                 proj: { vfx: 'holy_ray', speed: 11, w: 150, h: 44, y: -112, life: 48, color: '#ffe9a0', gravity: 0, vy: 0, scale: 0.45 } },
+      super:   { name: 'JUGEMENT', kind: 'slam', dmg: 340, startup: 30, active: 10, recovery: 30, box: { x: -30, y: -260, w: 220, h: 260 }, hitstun: 40, blockstun: 20, kb: 14, frames: [4, 5], anim: 'super', armor: true, knockdown: true, pillar: true },
+    }),
+  },
 };
 const FACTIONS = {
-  rebels:    { name: 'REBELLES',   color: '#c2262e', dark: '#2a0507', chars: ['eira', 'dante'], stage: 'rebels' },
-  loyalists: { name: 'LOYALISTES', color: '#4f86e6', dark: '#070f2a', chars: ['saerynn', 'cassius'], stage: 'loyalists' },
+  rebels:    { name: 'REBELLES',   color: '#c2262e', dark: '#2a0507', chars: ['eira', 'dante', 'caliban'], stage: 'rebels' },
+  loyalists: { name: 'LOYALISTES', color: '#4f86e6', dark: '#070f2a', chars: ['saerynn', 'cassius', 'aureus'], stage: 'loyalists' },
 };
-const ROSTER = ['eira', 'dante', 'saerynn', 'cassius'];
+const ROSTER = ['eira', 'dante', 'caliban', 'saerynn', 'cassius', 'aureus'];
+const SIDE = 3;   // personnages par faction dans ROSTER
 const METER_MAX = 300;
 
 // ---------------------------------------------------------------- Effets
@@ -421,7 +446,7 @@ class Fighter {
     this.blockFlash = 0; this.hitFlash = 0; this.shake = 0; this.beam = null;
     this.fired = false; this.superFlash = 0;
     this.buf = null; this.bufT = 0; // entrée mise en mémoire pendant un coup (buffer)
-    this.transform = 0; this.walkDir = 1; this.ghosts = [];
+    this.transform = 0; this.poison = 0; this.walkDir = 1; this.ghosts = [];
   }
   get alive() { return this.hp > 0; }
   get busy() { return ['attack', 'hit', 'ko', 'knockdown', 'getup'].includes(this.state); }
@@ -470,6 +495,7 @@ class Fighter {
     if (this.blockFlash > 0) this.blockFlash--; if (this.hitFlash > 0) this.hitFlash--;
     if (this.superFlash > 0) this.superFlash--;
     if (this.comboTimer > 0) { this.comboTimer--; if (this.comboTimer === 0) this.comboHits = 0; }
+    if (this.poison > 0) { this.poison--; if (this.poison % 30 === 0 && this.hp > 1) this.hp = Math.max(1, this.hp - 6); if (this.poison % 5 === 0) fx.push({ x: this.x + (Math.random() - 0.5) * 60, y: this.y - Math.random() * 160, vx: (Math.random() - 0.5) * 0.6, vy: -0.6 - Math.random(), life: 24, color: '#7dff4a', r: 3 }); }
     if (this.transform > 0) { this.transform--; if (this.transform % 4 === 0) fx.push({ x: this.x + (Math.random() - 0.5) * 50, y: this.y - Math.random() * 150, vx: (Math.random() - 0.5), vy: -1 - Math.random() * 2, life: 18, color: '#ff8a2a', r: 3 }); }
     const ip = this.readInput(inp, opp);
     this.pushDir(ip);
@@ -565,6 +591,9 @@ class Fighter {
       if (m.quake) { spawnVfx('shockwave', this.x + f * 60, this.y, { anchor: 'bottom', scale: 0.75, dur: 3, flip: f }); spawnVfx('shockwave', this.x - f * 60, this.y, { anchor: 'bottom', scale: 0.75, dur: 3, flip: -f }); game.shake = 16; game.flash = 6; }
       if (m.kind === 'spikes') { for (let i = 0; i < 3; i++) spawnVfx('spikes', this.x + f * (110 + i * 150), this.y, { anchor: 'bottom', scale: 0.55, dur: 4 }); game.shake = 8; }
       if (m.nightfall) { game.dark = 60; }
+      if (m.pillar) { spawnVfx('pillar', this.x + f * 80, this.y, { anchor: 'bottom', scale: 0.85, dur: 3 }); game.flash = 12; game.shake = 12; }
+      if (m.plague) { spawnVfx('rot', this.x + f * 120, this.y - 60, { scale: 0.9, dur: 3, flip: f }); spawnVfx('rot', this.x - f * 120, this.y - 60, { scale: 0.9, dur: 3, flip: -f }); game.shake = 10; }
+      if (m.rot) spawnVfx('rot', this.x + f * 70, this.y - 100, { scale: 0.45, dur: 2, flip: f });
     }
     if (m.trail && t >= m.startup && t < m.startup + m.active && t % 3 === 0) {
       spawnVfx('shadow', this.x - this.facing * 20, this.y - 90 * this.def.scale, { flip: -this.facing, scale: 0.45, dur: 2, add: false, alpha: 0.85 });
@@ -605,6 +634,7 @@ class Fighter {
     const perHit = (m.multi ? m.dmg / m.multi : m.dmg) * (from.transform > 0 ? 1.3 : 1);
     this.hp -= Math.floor(perHit * scale); this.hitFlash = 6; this.meter = Math.min(METER_MAX, this.meter + Math.floor(m.dmg * 0.25));
     this.comboHits++; this.comboTimer = 45;
+    if (m.poison) { this.poison = Math.max(this.poison, m.poison); floatText(this.x, this.y - 230, 'POISON', '#7dff4a'); }
     this.state = 'hit'; this.t = 0; this.stun = m.hitstun; this.move = null; this.armor = false;
     this.facing = -dir;
     if (m.launch || !this.grounded || m.knockdown) {
@@ -718,6 +748,7 @@ class Fighter {
       else if (this.superFlash > 0 && this.superFlash % 4 < 2) c.filter = 'brightness(1.8) saturate(2)';
       else if (this.armor) c.filter = 'sepia(.5) saturate(2.5) brightness(1.1)';
       else if (this.transform > 0 && !META.dante_lava) c.filter = 'saturate(1.7) hue-rotate(-12deg) brightness(1.12) contrast(1.1)';
+      else if (this.poison > 0 && this.poison % 10 < 5) c.filter = 'sepia(0.5) hue-rotate(50deg) saturate(1.8)';
       const ok = this.drawSpriteFrame(c, fr.act, fr.i, this.x + this.facing * (fr.dx || 0), this.y - bob + (fr.dy || 0));
       c.restore();
       if (ok) return;
@@ -891,6 +922,8 @@ const CHAR_TIPS = {
   dante:   ["Éruption a de l'armure : elle encaisse les coups légers sans s'interrompre.", "Forme de lave (super) : Balrog pendant 30 s, +30 % de dégâts. Déclenche-la tôt dans le round."],
   saerynn: ["Éclats d'acier contrôlent la distance : tire, puis avance derrière le projectile.", "Forêt de lames (super) couvre 560 px : punis un adversaire qui recule ou saute."],
   cassius: ["Pas d'ombre traverse les projectiles au sol et te colle à l'adversaire.", "Nuit tombée (super) : 6 coups. Place-la quand l'adversaire se relève ou finit un coup."],
+  caliban: ["Toucher putride empoisonne 5 s : 6 PV toutes les demi-secondes. Recule et laisse le poison travailler.", "Peste (super) touche des DEUX côtés et empoisonne 10 s. Le poison ne met pas KO : finis au poing."],
+  aureus:  ["Rayon sacré est rapide (11 px/frame) : tire à mi-distance, l'adversaire n'a pas le temps de sauter.", "Jugement (super) frappe très haut devant toi : anti-air parfait contre un saut."],
 };
 function makeTut(def) {
   const L = () => bindLabel(0, 'L'), Hh = () => bindLabel(0, 'H'), K = () => bindLabel(0, 'K'), S = () => bindLabel(0, 'S');
@@ -1276,6 +1309,7 @@ function drawHUD(c) {
     if (im) c.drawImage(im, px, y - 3, size, size); else { c.fillStyle = '#222'; c.fillRect(px, y - 3, size, size); }
   };
   bar(p0, 80, 1); bar(p1, W - 80 - bw, -1);
+  game.p.forEach((p, i) => { if (p.poison > 0) { c.font = 'bold 14px Cinzel, Impact'; c.textAlign = i === 0 ? 'left' : 'right'; c.fillStyle = '#7dff4a'; c.fillText('POISON ' + Math.ceil(p.poison / 60) + ' s', i === 0 ? 80 : W - 80, 110); } });
   game.p.forEach((p, i) => { if (p.transform > 0) { c.font = 'bold 14px Cinzel, Impact'; c.textAlign = i === 0 ? 'left' : 'right'; c.fillStyle = '#ff8a2a'; c.fillText('FORME DE LAVE ' + Math.ceil(p.transform / 60) + ' s', i === 0 ? 80 : W - 80, 92); } });
   // timer
   c.fillStyle = '#111'; c.fillRect(W / 2 - 40, 14, 80, 46);
@@ -1363,7 +1397,7 @@ function drawTitle(c) {
   if (any('start') || any('L') || any('H') || any('K')) {
     SFX.confirm();
     if (game.menu === 4) { game.screen = 'keys'; keysUI.row = 0; keysUI.col = 0; keysUI.rebinding = false; game.t = 0; return; }
-    if (game.menu === 3) { game.mode = 'tuto'; game.notice = ''; game.screen = 'select'; game.sel = [{ idx: 0, done: false }, { idx: 2, done: false }]; game.selTurn = 0; game.t = 0; return; }
+    if (game.menu === 3) { game.mode = 'tuto'; game.notice = ''; game.screen = 'select'; game.sel = [{ idx: 0, done: false }, { idx: SIDE, done: false }]; game.selTurn = 0; game.t = 0; return; }
     if (game.menu === 2) { game.screen = 'online'; NET.ui = 0; NET.sub = 0; NET.error = ''; clearInputs(); game.t = 0; return; }
     game.mode = game.menu === 1 ? '2p' : '1p'; game.tut = null;
     game.notice = (game.mode === '2p' && resolve2pConflict()) ? 'Touches en conflit : P1 passe sur ' + PRESETS[binds[0].preset].name : '';
@@ -1406,10 +1440,10 @@ function drawSelect(c) {
   c.textAlign = 'center'; c.font = 'bold 44px Cinzel, Impact'; c.lineWidth = 6; c.strokeStyle = '#000';
   c.strokeText('CHOISISSEZ VOTRE COMBATTANT', W / 2, 60); c.fillStyle = '#fff'; c.fillText('CHOISISSEZ VOTRE COMBATTANT', W / 2, 60);
   c.font = 'bold 28px Cinzel, Impact'; c.fillStyle = FACTIONS.rebels.color; c.fillText('REBELLES', W / 4, 105); c.fillStyle = FACTIONS.loyalists.color; c.fillText('LOYALISTES', 3 * W / 4, 105);
-  const cell = 180, gap = 24, x0 = W / 2 - (cell * 4 + gap * 3) / 2 - gap / 2, y0 = 130;
+  const cell = 150, gap = 16, x0 = W / 2 - (cell * 6 + gap * 5) / 2 - gap / 2, y0 = 130;
   ROSTER.forEach((id, i) => {
     const d = CHARS[id], fac = FACTIONS[d.faction];
-    const x = x0 + i * (cell + gap) + (i >= 2 ? gap : 0), y = y0;
+    const x = x0 + i * (cell + gap) + (i >= SIDE ? gap : 0), y = y0;
     c.fillStyle = '#111'; c.fillRect(x - 4, y - 4, cell + 8, cell + 8);
     const im = IMG['portrait_' + id];
     if (im) c.drawImage(im, x, y, cell, cell); else { c.fillStyle = fac.dark; c.fillRect(x, y, cell, cell); c.fillStyle = fac.color; c.font = 'bold 40px Cinzel, Impact'; c.fillText(d.name[0], x + cell / 2, y + cell / 2 + 14); }
@@ -1438,8 +1472,8 @@ function drawSelect(c) {
   if (NET.active) {
     const inp = inputs[0];
     if (!cur.done) {
-      if (inp.pressed('left')) { cur.idx = (cur.idx + 3) % 4; SFX.select(); netSend({ t: 'sel', idx: cur.idx }); }
-      if (inp.pressed('right')) { cur.idx = (cur.idx + 1) % 4; SFX.select(); netSend({ t: 'sel', idx: cur.idx }); }
+      if (inp.pressed('left')) { cur.idx = (cur.idx + ROSTER.length - 1) % ROSTER.length; SFX.select(); netSend({ t: 'sel', idx: cur.idx }); }
+      if (inp.pressed('right')) { cur.idx = (cur.idx + 1) % ROSTER.length; SFX.select(); netSend({ t: 'sel', idx: cur.idx }); }
       if (inp.pressed('L') || inp.pressed('H') || inp.pressed('K') || inp.pressed('start') || inp.pressed('S')) { cur.done = true; SFX.confirm(); netSend({ t: 'ok', idx: cur.idx }); netTryStart(); }
     }
     return;
@@ -1448,12 +1482,12 @@ function drawSelect(c) {
   const alt = game.mode === '2p' ? null : inputs[1];
   const pr = a => inp.pressed(a) || (alt && alt.pressed(a));
   if (!cur.done) {
-    if (pr('left')) { cur.idx = (cur.idx + 3) % 4; SFX.select(); }
-    if (pr('right')) { cur.idx = (cur.idx + 1) % 4; SFX.select(); }
+    if (pr('left')) { cur.idx = (cur.idx + ROSTER.length - 1) % ROSTER.length; SFX.select(); }
+    if (pr('right')) { cur.idx = (cur.idx + 1) % ROSTER.length; SFX.select(); }
     if (pr('L') || pr('H') || pr('K') || pr('start') || pr('S')) {
       cur.done = true; SFX.confirm();
-      if (game.mode === 'tuto') { game.sel[1].idx = cur.idx < 2 ? 2 : 0; game.sel[1].done = true; startMatch(); return; }
-      if (game.selTurn === 0) { game.selTurn = 1; game.sel[1].idx = game.sel[0].idx < 2 ? 2 + Math.floor(Math.random() * 2) : Math.floor(Math.random() * 2); }
+      if (game.mode === 'tuto') { game.sel[1].idx = cur.idx < SIDE ? SIDE : 0; game.sel[1].done = true; startMatch(); return; }
+      if (game.selTurn === 0) { game.selTurn = 1; game.sel[1].idx = (game.sel[0].idx < SIDE ? SIDE : 0) + Math.floor(Math.random() * SIDE); }
       else { startMatch(); }
     }
   }
