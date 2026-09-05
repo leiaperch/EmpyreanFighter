@@ -40,6 +40,13 @@ A pied, B ou RB spécial, Start. **M** coupe la musique, **Échap** revient au t
 - Les combos réduisent les dégâts (−12 % par coup, plancher 30 %). Un adversaire acculé dans
   le coin repousse l'attaquant.
 
+## Tutoriel
+
+Écran titre → **TUTORIEL**, puis choisir un personnage. Onze étapes guidées contre un mannequin
+(PV et chrono figés) : déplacement, saut/accroupi, coup léger, coup lourd, balayette, blocage haut,
+blocage bas (le mannequin balaye), spécial, super (jauge offerte), puis deux conseils propres au
+personnage. Chaque étape se valide en la réalisant ; Échap quitte à tout moment.
+
 ## Jouer en ligne (deux PC)
 
 Écran titre → **EN LIGNE**. Un joueur choisit **Héberger** et obtient un code de 5 caractères ;

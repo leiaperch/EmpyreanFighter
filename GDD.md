@@ -89,8 +89,15 @@ premier frame actif du coup ; les projectiles VFX avancent leur frame avec leur 
 - Le super de Seraph (rayon plein écran) ne doit pas être une victoire garantie : blockstun 20,
   bloquable debout ou accroupi.
 
+## Onboarding — tutoriel par personnage
+Mannequin `TutorAI` piloté par l'étape courante (`idle` / `attack` / `sweep`). Validation par
+observation de l'état du joueur (déplacement, saut, coups touchés via `resolveHit`, blocages,
+spécial/super déclenchés). Aucun échec possible : PV régénérés à chaque frame, chrono figé.
+Conseils finaux = `CHAR_TIPS` (deux phrases par personnage : outil principal, usage du super).
+
 ## Changelog
 
+- 0.6 (2026-09-05) : mode tutoriel, découpage par composantes (lames non tronquées), VFX sans voile.
 - 0.5.1 (2026-09-05) : animation de marche arrière dédiée (walkback).
 - 0.5 (2026-09-05) : roster final (Eira, Dante, Saerynn, Cassius), sprites animés 9 actions × 8 frames, VFX en frames, forme de lave de Dante.
 
