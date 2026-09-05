@@ -559,10 +559,8 @@ class Fighter {
     // ---- VFX liés au coup
     if (t === m.startup) {
       const f = this.facing, b = m.box;
-      if (['light', 'heavy', 'kick'].includes(m.anim) && b) {
-        const rot = m.anim === 'light' ? -1.1 : m.anim === 'heavy' ? 0.35 : 1.5;
-        spawnVfx('slash', this.x + f * (b.x + b.w * 0.55) * this.def.scale, this.y + (b.y + b.h / 2) * this.def.scale, { flip: f, rot, scale: m.anim === 'heavy' ? 0.42 : 0.3, dur: 2 });
-      }
+      // traînée uniquement sur les coups lourds, devant la lame (pas de croissant qui double l'arme)
+      if (m.anim === 'heavy' && b) spawnVfx('slash', this.x + f * (b.x + b.w * 0.85) * this.def.scale, this.y + (b.y + b.h * 0.6) * this.def.scale, { flip: f, rot: 0.5, scale: 0.3, dur: 2, alpha: 0.7 });
       if (m.eruption) spawnVfx('eruption', this.x + f * 95, this.y, { anchor: 'bottom', scale: 0.6, dur: 3 });
       if (m.quake) { spawnVfx('shockwave', this.x + f * 60, this.y, { anchor: 'bottom', scale: 0.75, dur: 3, flip: f }); spawnVfx('shockwave', this.x - f * 60, this.y, { anchor: 'bottom', scale: 0.75, dur: 3, flip: -f }); game.shake = 16; game.flash = 6; }
       if (m.kind === 'spikes') { for (let i = 0; i < 3; i++) spawnVfx('spikes', this.x + f * (110 + i * 150), this.y, { anchor: 'bottom', scale: 0.55, dur: 4 }); game.shake = 8; }
@@ -690,9 +688,8 @@ class Fighter {
   }
   spriteScale(act) {
     const meta = META[this.def.id]; if (!meta || !meta.idle || !meta[act]) return null;
-    const idleH = meta.idle[0].h, ref = { jump: 1, kick: 7 }[act] || 0;
-    const kAct = Math.max(0.8, Math.min(1.25, idleH / meta[act][ref].h));
-    return (200 * this.def.scale / idleH) * kAct;
+    // les planches sont découpées à échelle uniforme : une seule échelle par personnage (idle = 200 px × scale)
+    return 200 * this.def.scale / meta.idle[0].h;
   }
   drawSpriteFrame(c, act, i, x, y, alpha) {
     const img = ANIM[this.def.id] && ANIM[this.def.id][act] && ANIM[this.def.id][act][i];
