@@ -11,30 +11,32 @@ Jeu de combat 2D dark fantasy, dans l'esprit de Street Fighter, jouable sur PC d
 - Sélection : ←/→ pour choisir, n'importe quel bouton d'attaque pour valider. Échap : retour.
 - Match au meilleur des 3 rounds, 99 s par round.
 
-## Commandes
+## Commandes (clavier, remappables)
 
-| Action            | Joueur 1 (clavier)      | Joueur 2 (clavier)        | Manette (P1 = manette 1, P2 = manette 2) |
-|-------------------|-------------------------|---------------------------|------------------------------------------|
-| Déplacement       | A / D (Q / D en AZERTY) | ← / →                     | Stick gauche / croix                     |
-| Saut              | W (Z en AZERTY)         | ↑                         | Haut                                     |
-| S'accroupir       | S                       | ↓                         | Bas                                      |
-| Coup léger        | J                       | Pavé num. 1               | X (bouton 2)                             |
-| Coup lourd        | K                       | Pavé num. 2               | Y (bouton 3)                             |
-| Coup de pied      | L                       | Pavé num. 3               | A (bouton 0)                             |
-| Spécial           | I                       | Pavé num. 5               | B (bouton 1) ou RB                       |
-| Start             | Entrée / Espace         | Pavé num. 0 / Entrée num. | Start                                    |
-| Musique on/off    | M                       |                           |                                          |
+Écran titre → **TOUCHES** : choisir un préréglage par joueur (← →) ou redéfinir chaque touche
+(Entrée puis la touche voulue). Sauvegardé dans le navigateur. Suppr remet les valeurs par défaut.
+Les touches sont **physiques** : le jeu affiche ce qui est écrit sur *votre* clavier (AZERTY ou QWERTY).
 
-Les touches clavier sont détectées par **position physique** : WASD reste au même endroit
-sur un clavier AZERTY (Z-Q-S-D).
+| Préréglage             | Déplacer          | Léger | Lourd | Pied | Spécial | Start        |
+|------------------------|-------------------|-------|-------|------|---------|--------------|
+| Flèches + AZER (P1 défaut) | ← → ↑ ↓        | A     | Z     | E    | R       | Entrée       |
+| Flèches + pavé num. (P2 défaut) | ← → ↑ ↓   | Num 1 ou `;` | Num 2 ou `:` | Num 3 ou `!` | Num 5 ou Maj droite | Entrée num. |
+| ZQSD + FGHJ            | Z Q S D           | F     | G     | H    | J       | Espace       |
+| ZQSD + JKL I           | Z Q S D           | J     | K     | L    | I       | Espace       |
+
+En **2 joueurs**, si P1 et P2 partagent des touches (flèches), P1 bascule automatiquement sur
+« ZQSD + FGHJ ». Une manette (optionnelle) est aussi reconnue : stick/croix, X léger, Y lourd,
+A pied, B ou RB spécial, Start. **M** coupe la musique, **Échap** revient au titre.
 
 ### Techniques
 
-- **Bloquer** : reculer. **Bloquer bas** : ↓ + reculer. Les coups bas doivent être bloqués
-  accroupi, les coups sautés / overheads doivent être bloqués debout.
-- **Balayette** (met à terre) : ↓ + coup de pied. **Anti-air** (envoie en l'air) : ↓ + lourd.
+- **Bloquer** : reculer. **Bloquer bas** : accroupi + reculer. Les coups bas se bloquent
+  accroupi, les coups sautés / overheads se bloquent debout.
+- **Balayette** (met à terre) : accroupi + pied. **Anti-air** (envoie en l'air) : accroupi + lourd.
 - **Spécial** : ↓↘→ + n'importe quel coup, ou la touche Spécial directement.
-- **Super** (jauge pleine, la barre clignote) : ↓ + Spécial.
+- **Super** (jauge pleine, la barre clignote) : accroupi + Spécial.
+- Un bouton pressé pendant la fin d'un coup est mémorisé (buffer de 12 frames) et part dès
+  que le personnage est libre : on peut enchaîner sans « rater » d'entrée.
 - Les combos réduisent les dégâts (−12 % par coup, plancher 30 %). Un adversaire acculé dans
   le coin repousse l'attaquant.
 

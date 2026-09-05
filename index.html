@@ -14,7 +14,7 @@
 </head>
 <body>
 <div id="wrap"><canvas id="c" width="960" height="540"></canvas></div>
-<div id="hint">P1 : WASD + J (léger) K (lourd) L (coup de pied) I (spécial) &nbsp;|&nbsp; P2 : Flèches + Num1 Num2 Num3 Num5 &nbsp;|&nbsp; Manettes prises en charge &nbsp;|&nbsp; M : musique</div>
+<div id="hint"></div>
 <script>
 'use strict';
 // =====================================================================
@@ -100,11 +100,56 @@ const SFX = {
 
 // ---------------------------------------------------------------- Input
 // Actions logiques : left right up down L (léger) H (lourd) K (pied) S (spécial) start
-const KEYMAP = [
-  { KeyA: 'left', KeyD: 'right', KeyW: 'up', KeyS: 'down', KeyJ: 'L', KeyK: 'H', KeyL: 'K', KeyI: 'S', Enter: 'start', Space: 'start' },
-  { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', Numpad1: 'L', Numpad2: 'H', Numpad3: 'K', Numpad5: 'S', Numpad0: 'start', NumpadEnter: 'start' },
-];
+// Les touches sont des codes PHYSIQUES (KeyW = la touche à la place de W, soit Z sur AZERTY) ;
+// les libellés affichés suivent la disposition réelle du clavier (voir keyLabel).
 const ACTIONS = ['left', 'right', 'up', 'down', 'L', 'H', 'K', 'S', 'start'];
+const ACTION_LABELS = { left: 'Gauche', right: 'Droite', up: 'Saut', down: 'Accroupir', L: 'Coup léger', H: 'Coup lourd', K: 'Coup de pied', S: 'Spécial', start: 'Start / valider' };
+const PRESETS = {
+  arrows_azer:   { name: 'Flèches + AZER',  left: ['ArrowLeft'], right: ['ArrowRight'], up: ['ArrowUp'], down: ['ArrowDown'], L: ['KeyQ'], H: ['KeyW'], K: ['KeyE'], S: ['KeyR'], start: ['Enter'] },
+  arrows_numpad: { name: 'Flèches + pavé num.', left: ['ArrowLeft'], right: ['ArrowRight'], up: ['ArrowUp'], down: ['ArrowDown'], L: ['Numpad1', 'Comma'], H: ['Numpad2', 'Period'], K: ['Numpad3', 'Slash'], S: ['Numpad5', 'ShiftRight'], start: ['NumpadEnter', 'Enter'] },
+  zqsd_fghj:     { name: 'ZQSD + FGHJ',     left: ['KeyA'], right: ['KeyD'], up: ['KeyW'], down: ['KeyS'], L: ['KeyF'], H: ['KeyG'], K: ['KeyH'], S: ['KeyJ'], start: ['Space'] },
+  zqsd_jkli:     { name: 'ZQSD + JKL I',    left: ['KeyA'], right: ['KeyD'], up: ['KeyW'], down: ['KeyS'], L: ['KeyJ'], H: ['KeyK'], K: ['KeyL'], S: ['KeyI'], start: ['Space'] },
+};
+const PRESET_IDS = Object.keys(PRESETS);
+function presetBinds(id) { const p = PRESETS[id], b = { preset: id }; ACTIONS.forEach(a => b[a] = p[a].slice()); return b; }
+let binds = [presetBinds('arrows_azer'), presetBinds('arrows_numpad')];
+try { const saved = JSON.parse(localStorage.getItem('ef_binds') || 'null'); if (saved && saved.length === 2 && ACTIONS.every(a => saved[0][a] && saved[1][a])) binds = saved; } catch (e) {}
+function saveBinds() { try { localStorage.setItem('ef_binds', JSON.stringify(binds)); } catch (e) {} updateHint(); }
+// code physique → [joueur, action]
+let codeMap = {};
+function rebuildCodeMap() { codeMap = {}; binds.forEach((b, i) => ACTIONS.forEach(a => b[a].forEach(code => { (codeMap[code] = codeMap[code] || []).push([i, a]); }))); }
+rebuildCodeMap();
+function bindConflicts() { const out = []; for (const code in codeMap) if (codeMap[code].length > 1) out.push(code); return out; }
+// En 2 joueurs, si les deux presets se marchent dessus, P1 passe sur le pavé gauche
+function resolve2pConflict() {
+  if (bindConflicts().length === 0) return false;
+  binds[0] = presetBinds('zqsd_fghj'); rebuildCodeMap(); if (bindConflicts().length) binds[1] = presetBinds('arrows_numpad');
+  rebuildCodeMap(); saveBinds(); return true;
+}
+// ---- Libellés de touches selon la disposition réelle
+let layoutMap = null;
+try { if (navigator.keyboard && navigator.keyboard.getLayoutMap) navigator.keyboard.getLayoutMap().then(m => { layoutMap = m; updateHint(); }).catch(() => {}); } catch (e) {}
+const learned = {};      // code → caractère réellement produit (appris à chaque frappe)
+let azerty = false;
+const AZERTY = { KeyQ: 'A', KeyW: 'Z', KeyA: 'Q', KeyZ: 'W', KeyM: ',', Semicolon: 'M', Comma: ';', Period: ':', Slash: '!', Quote: 'ù', BracketLeft: '^', BracketRight: '$', Minus: ')', Equal: '=', Backquote: '²', Backslash: '*', IntlBackslash: '<' };
+const FIXED = { Comma: ',', Period: '.', Slash: '/', Semicolon: ';', Quote: "'", BracketLeft: '[', BracketRight: ']', Minus: '-', Equal: '=', Backquote: '`', Backslash: '\', IntlBackslash: '<', Delete: 'Suppr', Insert: 'Inser', Home: 'Début', End: 'Fin', PageUp: 'Page ↑', PageDown: 'Page ↓', ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓', Space: 'Espace', Enter: 'Entrée', NumpadEnter: 'Entrée num.', ShiftLeft: 'Maj G', ShiftRight: 'Maj D', ControlLeft: 'Ctrl G', ControlRight: 'Ctrl D', AltLeft: 'Alt', AltRight: 'Alt Gr', Tab: 'Tab', Backspace: 'Retour', CapsLock: 'Verr. maj', NumpadAdd: 'Num +', NumpadSubtract: 'Num −', NumpadMultiply: 'Num ×', NumpadDivide: 'Num ÷', NumpadDecimal: 'Num .' };
+function keyLabel(code) {
+  if (layoutMap && layoutMap.get(code)) return layoutMap.get(code).toUpperCase();
+  if (azerty && AZERTY[code]) return AZERTY[code];
+  if (FIXED[code]) return FIXED[code];
+  if (learned[code]) return learned[code].toUpperCase();
+  if (/^Numpad/.test(code)) return 'Num ' + code.slice(6);
+  if (/^Key/.test(code)) return code.slice(3);
+  if (/^Digit/.test(code)) return code.slice(5);
+  return code;
+}
+function bindLabel(pi, a) { return binds[pi][a].map(keyLabel).join(' / '); }
+function moveLabels(pi) { return ['left', 'right', 'up', 'down'].map(a => keyLabel(binds[pi][a][0])).join(' '); }
+function controlsLine(pi) { return 'P' + (pi + 1) + ' : ' + moveLabels(pi) + ' déplacer · ' + bindLabel(pi, 'L') + ' léger · ' + bindLabel(pi, 'H') + ' lourd · ' + bindLabel(pi, 'K') + ' pied · ' + bindLabel(pi, 'S') + ' spécial'; }
+function updateHint() {
+  const el = document.getElementById('hint'); if (!el) return;
+  el.textContent = controlsLine(0) + '   |   ' + controlsLine(1) + '   |   Touches : écran titre · M : musique · Échap : retour';
+}
 class Input {
   constructor(idx) { this.idx = idx; this.cur = {}; this.prev = {}; this.raw = {}; this.latch = {}; ACTIONS.forEach(a => { this.cur[a] = false; this.prev[a] = false; this.raw[a] = false; this.latch[a] = false; }); }
   poll() {
@@ -112,7 +157,7 @@ class Input {
     const c = { ...this.raw };
     // un appui relâché avant le prochain poll compte quand même une frame
     ACTIONS.forEach(a => { if (this.latch[a]) { c[a] = true; this.latch[a] = false; } });
-    // Manette (index = joueur)
+    // Manette (index = joueur), optionnelle
     let pads = []; try { pads = navigator.getGamepads ? navigator.getGamepads() : []; } catch (e) { /* iframe sans permission gamepad */ }
     const gp = pads && pads[this.idx];
     if (gp) {
@@ -141,15 +186,46 @@ function keyCode(e) {
   if (/^[0-9]$/.test(k)) return 'Numpad' + k;
   return k;
 }
+// Écran de configuration des touches
+const keysUI = { row: 0, col: 0, rebinding: false };
+const KEYS_ROWS = ['preset'].concat(ACTIONS);
+function keysNavigate(code) {
+  if (keysUI.rebinding) {
+    if (code === 'Escape') { keysUI.rebinding = false; return; }
+    const a = KEYS_ROWS[keysUI.row];
+    binds[keysUI.col][a] = [code]; binds[keysUI.col].preset = 'custom';
+    keysUI.rebinding = false; rebuildCodeMap(); saveBinds(); SFX.confirm(); return;
+  }
+  if (code === 'Escape') { game.screen = 'title'; game.t = 0; return; }
+  if (code === 'ArrowUp') { keysUI.row = (keysUI.row + KEYS_ROWS.length - 1) % KEYS_ROWS.length; SFX.select(); }
+  if (code === 'ArrowDown') { keysUI.row = (keysUI.row + 1) % KEYS_ROWS.length; SFX.select(); }
+  if (code === 'ArrowLeft' || code === 'ArrowRight') {
+    if (keysUI.row === 0) {
+      const cur = PRESET_IDS.indexOf(binds[keysUI.col].preset), n = PRESET_IDS.length;
+      const next = cur < 0 ? 0 : (cur + (code === 'ArrowRight' ? 1 : n - 1)) % n;
+      binds[keysUI.col] = presetBinds(PRESET_IDS[next]); rebuildCodeMap(); saveBinds();
+    } else keysUI.col = 1 - keysUI.col;
+    SFX.select();
+  }
+  if (code === 'Tab') { keysUI.col = 1 - keysUI.col; SFX.select(); }
+  if (code === 'Enter' || code === 'Space' || code === 'NumpadEnter') { if (keysUI.row > 0) { keysUI.rebinding = true; SFX.select(); } }
+  if (code === 'Delete' || code === 'Backspace') { binds = [presetBinds('arrows_azer'), presetBinds('arrows_numpad')]; rebuildCodeMap(); saveBinds(); SFX.confirm(); }
+}
 window.addEventListener('keydown', e => {
   audioInit();
   const code = keyCode(e);
-  if (code === 'KeyM') { musicOn = !musicOn; if (musicEl) { if (musicOn && musicWanted) musicEl.play().catch(() => {}); else musicEl.pause(); } }
-  KEYMAP.forEach((m, i) => { if (m[code]) { const a = m[code]; if (!inputs[i].raw[a]) inputs[i].latch[a] = true; inputs[i].raw[a] = true; e.preventDefault(); } });
-  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(code)) e.preventDefault();
+  if (e.key && e.key.length === 1 && e.key !== ' ') { learned[code] = e.key; if (code === 'KeyQ' && e.key.toLowerCase() === 'a') { azerty = true; updateHint(); } }
+  if (game.screen === 'keys') { e.preventDefault(); if (!e.repeat) keysNavigate(code); return; }
+  if (e.key === 'm' || e.key === 'M') { musicOn = !musicOn; if (musicEl) { if (musicOn && musicWanted) musicEl.play().catch(() => {}); else musicEl.pause(); } }
+  if (codeMap[code]) { codeMap[code].forEach(([i, a]) => { if (!inputs[i].raw[a]) inputs[i].latch[a] = true; inputs[i].raw[a] = true; }); e.preventDefault(); }
+  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(code)) e.preventDefault();
 });
-window.addEventListener('keyup', e => { const code = keyCode(e); KEYMAP.forEach((m, i) => { if (m[code]) inputs[i].raw[m[code]] = false; }); });
+window.addEventListener('keyup', e => { const code = keyCode(e); if (codeMap[code]) codeMap[code].forEach(([i, a]) => inputs[i].raw[a] = false); });
 window.addEventListener('blur', () => inputs.forEach(i => ACTIONS.forEach(a => i.raw[a] = false)));
+// Focus clavier : le canvas doit avoir le focus (surtout dans un iframe)
+canvas.tabIndex = 0; canvas.style.outline = 'none';
+canvas.addEventListener('mousedown', () => canvas.focus());
+window.addEventListener('load', () => { canvas.focus(); updateHint(); });
 
 // ---------------------------------------------------------------- Personnages
 // Frame data en frames (60 Hz). box = {x,y,w,h} relatif au point pied/centre, x positif = vers l'avant.
@@ -303,6 +379,7 @@ class Fighter {
     this.buffer = []; // {dir, t} pour les manipulations
     this.blockFlash = 0; this.hitFlash = 0; this.shake = 0; this.beam = null;
     this.fired = false; this.superFlash = 0;
+    this.buf = null; this.bufT = 0; // entrée mise en mémoire pendant un coup (buffer)
   }
   get alive() { return this.hp > 0; }
   get busy() { return ['attack', 'hit', 'ko', 'knockdown', 'getup'].includes(this.state); }
@@ -353,6 +430,9 @@ class Fighter {
     if (this.comboTimer > 0) { this.comboTimer--; if (this.comboTimer === 0) this.comboHits = 0; }
     const ip = this.readInput(inp, opp);
     this.pushDir(ip);
+    // buffer : un bouton pressé pendant la fin d'un coup est rejoué dès qu'on est libre
+    if (this.bufT > 0) this.bufT--;
+    if ((ip.L || ip.H || ip.K || ip.S) && (this.state === 'attack' || this.state === 'block' || this.state === 'getup')) { this.buf = { L: ip.L, H: ip.H, K: ip.K, S: ip.S }; this.bufT = 12; }
 
     // orientation automatique hors attaque
     if (!this.busy && this.grounded) this.facing = opp.x >= this.x ? 1 : -1;
@@ -403,6 +483,7 @@ class Fighter {
       } else this.state = 'crouch';
     }
     // ---- Attaques
+    if (this.bufT > 0 && this.buf) { ip.L = ip.L || this.buf.L; ip.H = ip.H || this.buf.H; ip.K = ip.K || this.buf.K; ip.S = ip.S || this.buf.S; this.buf = null; this.bufT = 0; }
     const air = !this.grounded;
     const wantSpecial = ip.S || (this.hasQCF() && (ip.L || ip.H || ip.K));
     if (wantSpecial && this.grounded) {
@@ -667,7 +748,7 @@ class AI {
 
 // ---------------------------------------------------------------- Jeu
 const game = {
-  screen: 'title', t: 0, mode: '1p', difficulty: 1,
+  screen: 'title', t: 0, mode: '1p', difficulty: 1, menu: 0, notice: '',
   sel: [{ idx: 0, done: false }, { idx: 3, done: false }], selTurn: 0,
   p: [null, null], projectiles: [], round: 1, timer: 99, timerAcc: 0,
   hitstop: 0, shake: 0, flash: 0, banner: null, bannerT: 0, phase: 'intro', phaseT: 0,
@@ -895,22 +976,57 @@ function drawTitle(c) {
   c.font = 'bold 30px Cinzel, Impact'; c.fillStyle = FACTIONS.rebels.color; c.fillText('REBELLES', W / 2 - 150, 245);
   c.fillStyle = '#fff'; c.fillText('VS', W / 2, 245);
   c.fillStyle = FACTIONS.loyalists.color; c.fillText('LOYALISTES', W / 2 + 160, 245);
-  const opts = ['1 JOUEUR  vs  IA', '2 JOUEURS'];
+  const opts = ['1 JOUEUR  vs  IA', '2 JOUEURS', 'TOUCHES'];
   const diffs = ['FACILE', 'NORMAL', 'DIFFICILE'];
   opts.forEach((o, i) => {
-    const sel = (game.mode === '1p' ? 0 : 1) === i;
-    c.font = 'bold 34px Cinzel, Impact'; c.fillStyle = sel ? '#ffd21e' : '#aaa'; c.fillText((sel ? '▶ ' : '') + o, W / 2, 330 + i * 50);
+    const sel = game.menu === i;
+    c.font = 'bold 32px Cinzel, Impact'; c.fillStyle = sel ? '#ffd21e' : '#aaa'; c.fillText((sel ? '▶ ' : '') + o, W / 2, 315 + i * 44);
   });
-  c.font = 'bold 22px Cinzel, Impact'; c.fillStyle = '#ccc'; c.fillText('DIFFICULTÉ IA :  ◀ ' + diffs[game.difficulty] + ' ▶   (gauche/droite)', W / 2, 450);
-  if (Math.floor(game.t / 30) % 2 === 0) { c.font = 'bold 24px Cinzel, Impact'; c.fillStyle = '#fff'; c.fillText('ENTRÉE / ESPACE / START pour commencer', W / 2, 500); }
-  const inp = inputs[0]; inputs.forEach(i => i.poll());
+  c.font = 'bold 20px Cinzel, Impact'; c.fillStyle = '#ccc'; c.fillText('DIFFICULTÉ IA :  ◀ ' + diffs[game.difficulty] + ' ▶   (gauche / droite)', W / 2, 450);
+  c.font = '15px Arial'; c.fillStyle = '#9a9aa8'; c.fillText(controlsLine(0), W / 2, 478);
+  if (Math.floor(game.t / 30) % 2 === 0) { c.font = 'bold 22px Cinzel, Impact'; c.fillStyle = '#fff'; c.fillText('ENTRÉE / ESPACE pour valider', W / 2, 510); }
+  inputs.forEach(i => i.poll());
   const any = a => inputs.some(i => i.pressed(a));
-  if (any('up') || any('down')) { game.mode = game.mode === '1p' ? '2p' : '1p'; SFX.select(); }
+  if (any('up')) { game.menu = (game.menu + 2) % 3; SFX.select(); }
+  if (any('down')) { game.menu = (game.menu + 1) % 3; SFX.select(); }
   if (any('left')) { game.difficulty = (game.difficulty + 2) % 3; SFX.select(); }
   if (any('right')) { game.difficulty = (game.difficulty + 1) % 3; SFX.select(); }
   if (any('start') || any('L') || any('H') || any('K')) {
-    game.screen = 'select'; game.sel = [{ idx: 0, done: false }, { idx: 3, done: false }]; game.selTurn = 0; game.t = 0; SFX.confirm();
+    SFX.confirm();
+    if (game.menu === 2) { game.screen = 'keys'; keysUI.row = 0; keysUI.col = 0; keysUI.rebinding = false; game.t = 0; return; }
+    game.mode = game.menu === 1 ? '2p' : '1p';
+    game.notice = (game.mode === '2p' && resolve2pConflict()) ? 'Touches en conflit : P1 passe sur ' + PRESETS[binds[0].preset].name : '';
+    game.screen = 'select'; game.sel = [{ idx: 0, done: false }, { idx: 3, done: false }]; game.selTurn = 0; game.t = 0;
   }
+}
+function drawKeys(c) {
+  game.t++;
+  c.fillStyle = '#05050a'; c.fillRect(0, 0, W, H);
+  c.textAlign = 'center'; c.font = 'bold 40px Cinzel, Impact'; c.lineWidth = 6; c.strokeStyle = '#000';
+  c.strokeText('TOUCHES', W / 2, 56); c.fillStyle = '#d4a92c'; c.fillText('TOUCHES', W / 2, 56);
+  const cols = [W / 2 - 40, W / 2 + 260], x0 = 120, y0 = 110, lh = 34;
+  c.font = 'bold 22px Cinzel, Impact'; c.fillStyle = '#fff';
+  c.fillText('JOUEUR 1', cols[0], y0 - 10); c.fillText('JOUEUR 2', cols[1], y0 - 10);
+  const conflicts = bindConflicts();
+  KEYS_ROWS.forEach((row, ri) => {
+    const y = y0 + 24 + ri * lh;
+    c.textAlign = 'left'; c.font = '18px Arial'; c.fillStyle = '#bbb';
+    c.fillText(row === 'preset' ? 'Préréglage' : ACTION_LABELS[row], x0, y);
+    for (let pi = 0; pi < 2; pi++) {
+      const sel = keysUI.row === ri && keysUI.col === pi;
+      let txt; if (row === 'preset') txt = '◀ ' + (PRESETS[binds[pi].preset] ? PRESETS[binds[pi].preset].name : 'Personnalisé') + ' ▶';
+      else txt = (sel && keysUI.rebinding) ? 'Appuyez sur une touche…' : bindLabel(pi, row);
+      const bad = row !== 'preset' && binds[pi][row].some(code => conflicts.includes(code));
+      c.textAlign = 'center'; c.font = (sel ? 'bold ' : '') + '19px Arial';
+      if (sel) { c.fillStyle = 'rgba(212,169,44,.18)'; c.fillRect(cols[pi] - 130, y - 20, 260, 28); }
+      c.fillStyle = sel && keysUI.rebinding ? '#ffd21e' : bad ? '#d4a92c' : sel ? '#fff3c4' : '#ddd';
+      c.fillText(txt, cols[pi], y);
+    }
+  });
+  c.textAlign = 'center'; c.font = '15px Arial'; c.fillStyle = '#9a9aa8';
+  c.fillText('↑ ↓ choisir · ← → changer de préréglage ou de joueur · Entrée : redéfinir la touche · Suppr : tout réinitialiser · Échap : retour', W / 2, 482);
+  if (conflicts.length) { c.fillStyle = '#d4a92c'; c.fillText('En or : touches partagées par P1 et P2 (' + conflicts.map(keyLabel).join(', ') + ') — sans effet en 1 joueur, P1 bascule sur ZQSD + FGHJ en 2 joueurs', W / 2, 506); }
+  else { c.fillStyle = '#7a7a88'; c.fillText('Touches physiques : le jeu affiche ce qui est écrit sur votre clavier. Sauvegardé automatiquement.', W / 2, 506); }
 }
 function drawSelect(c) {
   game.t++;
@@ -941,10 +1057,11 @@ function drawSelect(c) {
   const cur = game.sel[game.selTurn], d = CHARS[ROSTER[cur.idx]];
   c.font = '17px Arial'; c.fillStyle = '#ddd'; c.textAlign = 'center';
   const sp = d.moves.special, su = d.moves.super;
-  c.fillText('PV ' + d.hp + '   ·   Spécial : ' + sp.name + ' (↓↘→ + coup, ou touche Spécial)   ·   Super : ' + su.name + ' (jauge pleine, ↓ + Spécial)', W / 2, 415);
-  c.fillStyle = '#999'; c.fillText(game.mode === '1p' ? 'Choisissez P1 puis l\'adversaire IA' : 'P1 puis P2 choisissent', W / 2, 445);
-  c.fillText('Bloquer : reculer · Bloquer bas : ↓ + reculer · Balayette : ↓ + pied · Anti-air : ↓ + lourd', W / 2, 470);
-  c.fillText('Échap : retour', W / 2, 500);
+  const pi = game.mode === '2p' ? game.selTurn : 0;
+  c.fillText('PV ' + d.hp + '   ·   Spécial : ' + sp.name + ' (↓↘→ + coup, ou ' + bindLabel(pi, 'S') + ')   ·   Super : ' + su.name + ' (jauge pleine, ' + keyLabel(binds[pi].down[0]) + ' + ' + bindLabel(pi, 'S') + ')', W / 2, 415);
+  c.fillStyle = '#999'; c.fillText((game.mode === '1p' ? 'Choisissez P1 puis l\'adversaire IA' : 'P1 puis P2 choisissent') + (game.notice ? '   —   ' + game.notice : ''), W / 2, 445);
+  c.fillText(controlsLine(pi), W / 2, 470);
+  c.fillText('Bloquer : reculer · Bloquer bas : accroupi + reculer · Balayette : accroupi + pied · Anti-air : accroupi + lourd · Échap : retour', W / 2, 495);
   inputs.forEach(i => i.poll());
   const inp = game.mode === '2p' ? inputs[game.selTurn] : inputs[0];
   const alt = game.mode === '2p' ? null : inputs[1];
@@ -959,7 +1076,7 @@ function drawSelect(c) {
     }
   }
 }
-window.addEventListener('keydown', e => { if (keyCode(e) === 'Escape') { if (game.screen === 'select' || game.screen === 'result' || game.screen === 'fight' || game.screen === 'vs') { game.screen = 'title'; game.t = 0; musicStop(); } } });
+window.addEventListener('keydown', e => { if (keyCode(e) === 'Escape' && game.screen !== 'keys') { if (game.screen === 'select' || game.screen === 'result' || game.screen === 'fight' || game.screen === 'vs') { game.screen = 'title'; game.t = 0; musicStop(); } } });
 function drawVS(c) {
   game.t++;
   const a = game.p[0].def, b = game.p[1].def;
@@ -1000,6 +1117,7 @@ function frame(now) {
   }
   switch (game.screen) {
     case 'title': drawTitle(ctx); break;
+    case 'keys': drawKeys(ctx); break;
     case 'select': drawSelect(ctx); break;
     case 'vs': drawVS(ctx); break;
     case 'fight': drawFight(ctx); break;
