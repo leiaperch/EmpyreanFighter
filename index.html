@@ -62,9 +62,9 @@ function loadFrame(path) {
   im.src = assetUrl(path); return im;
 }
 function loadAnims() {
-  ['eira', 'dante', 'saerynn', 'cassius'].forEach(ch => {
+  ['eira', 'dante', 'saerynn', 'cassius', 'dante_lava'].forEach(ch => {
     ANIM[ch] = {};
-    ANIM_ACTIONS.forEach(a => { ANIM[ch][a] = []; for (let i = 1; i <= 8; i++) ANIM[ch][a].push(loadFrame('assets/anim/' + ch + '/' + a + '/f' + i + '.webp')); });
+    ANIM_ACTIONS.forEach(a => { if (ch === 'dante_lava' && a === 'super') return; ANIM[ch][a] = []; for (let i = 1; i <= 8; i++) ANIM[ch][a].push(loadFrame('assets/anim/' + ch + '/' + a + '/f' + i + '.webp')); });
   });
   VFX_NAMES.forEach(v => { VFX[v] = []; for (let i = 1; i <= 8; i++) VFX[v].push(loadFrame('assets/vfx/' + v + '/f' + i + '.webp')); });
 }
@@ -425,7 +425,7 @@ class Fighter {
   }
   get alive() { return this.hp > 0; }
   get busy() { return ['attack', 'hit', 'ko', 'knockdown', 'getup'].includes(this.state); }
-  get height() { return (this.crouch ? 110 : 170) * this.def.scale; }
+  get height() { return (this.crouch ? 110 : 170) * this.def.scale * (this.transform > 0 ? 1.2 : 1); }
   hurtbox() {
     const w = 46 * this.def.scale, h = this.state === 'knockdown' || this.state === 'ko' ? 40 : this.height;
     return { x: this.x - w / 2, y: this.y - h, w, h };
@@ -571,7 +571,7 @@ class Fighter {
       this.ghosts.push({ x: this.x, y: this.y, act: 'special', i: 3, life: 12 });
     }
     if (m.nightfall && t >= m.startup && t < m.startup + m.active && t % 6 === 0) spawnVfx('slash', this.x + this.facing * 70, this.y - 100, { flip: this.facing, rot: Math.random() * 3 - 1.5, scale: 0.4, dur: 2 });
-    if (m.kind === 'transform' && t === total - 1) { this.transform = 900; spawnVfx('eruption', this.x, this.y, { anchor: 'bottom', scale: 0.8, dur: 3 }); game.shake = 12; game.flash = 10; SFX.super(); }
+    if (m.kind === 'transform' && t === total - 1) { this.transform = 1800; spawnVfx('eruption', this.x, this.y, { anchor: 'bottom', scale: 0.8, dur: 3 }); game.shake = 12; game.flash = 10; SFX.super(); }
     this.armor = !!m.armor && t < m.startup + m.active;
     // hitbox active ?
     if (t >= m.startup && t < m.startup + m.active && m.kind !== 'projectile' && m.box) {
@@ -686,14 +686,20 @@ class Fighter {
     }
     return { act: 'idle', i: 0 };
   }
+  spriteId(act) {
+    if (this.transform > 0 && this.def.id === 'dante' && META.dante_lava && META.dante_lava[act] && ANIM.dante_lava && ANIM.dante_lava[act]) return 'dante_lava';
+    return this.def.id;
+  }
   spriteScale(act) {
-    const meta = META[this.def.id]; if (!meta || !meta.idle || !meta[act]) return null;
+    const id = this.spriteId(act), meta = META[id]; if (!meta || !meta.idle || !meta[act]) return null;
+    if (id === 'dante_lava') return 250 * this.def.scale / meta.idle[0].h;
     // les planches sont découpées à échelle uniforme : une seule échelle par personnage (idle = 200 px × scale)
     return 200 * this.def.scale / meta.idle[0].h;
   }
   drawSpriteFrame(c, act, i, x, y, alpha) {
-    const img = ANIM[this.def.id] && ANIM[this.def.id][act] && ANIM[this.def.id][act][i];
-    const k = this.spriteScale(act), meta = META[this.def.id];
+    const id = this.spriteId(act);
+    const img = ANIM[id] && ANIM[id][act] && ANIM[id][act][i];
+    const k = this.spriteScale(act), meta = META[id];
     if (!frameReady(img) || !k) return false;
     const m = meta[act][i], w = m.w * k, h = m.h * k, ax = m.ax * k;
     c.save(); c.translate(x, y); c.scale(this.facing, 1); if (alpha != null) c.globalAlpha = alpha;
@@ -705,13 +711,13 @@ class Fighter {
       const bob = this.state === 'idle' ? Math.sin(this.anim * 0.12) * 1.5 : 0;
       // ombre au sol
       c.fillStyle = 'rgba(0,0,0,.35)'; c.beginPath(); c.ellipse(this.x, this.y + 2, 42 * this.def.scale, 8, 0, 0, Math.PI * 2); c.fill();
-      if (this.transform > 0) drawVfxFrame(c, 'lava_aura', Math.floor(this.anim / 3), this.x, this.y + 6, { anchor: 'bottom', scale: 0.5 + 0.02 * Math.sin(this.anim * 0.2), alpha: 0.85 });
+      if (this.transform > 0 && !META.dante_lava) drawVfxFrame(c, 'lava_aura', Math.floor(this.anim / 3), this.x, this.y + 6, { anchor: 'bottom', scale: 0.5 + 0.02 * Math.sin(this.anim * 0.2), alpha: 0.85 });
       for (let g = this.ghosts.length - 1; g >= 0; g--) { const gh = this.ghosts[g]; gh.life--; if (gh.life <= 0) { this.ghosts.splice(g, 1); continue; } this.drawSpriteFrame(c, gh.act, gh.i, gh.x, gh.y, gh.life / 24); }
       c.save();
       if (this.hitFlash > 0) c.filter = 'brightness(3)';
       else if (this.superFlash > 0 && this.superFlash % 4 < 2) c.filter = 'brightness(1.8) saturate(2)';
       else if (this.armor) c.filter = 'sepia(.5) saturate(2.5) brightness(1.1)';
-      else if (this.transform > 0) c.filter = 'saturate(1.7) hue-rotate(-12deg) brightness(1.12) contrast(1.1)';
+      else if (this.transform > 0 && !META.dante_lava) c.filter = 'saturate(1.7) hue-rotate(-12deg) brightness(1.12) contrast(1.1)';
       const ok = this.drawSpriteFrame(c, fr.act, fr.i, this.x + this.facing * (fr.dx || 0), this.y - bob + (fr.dy || 0));
       c.restore();
       if (ok) return;
@@ -863,6 +869,70 @@ class AI {
     } else if (this.plan === 'retreat') raw[dirAway] = true;
     else if (Math.random() < 0.2) raw.down = true;
   }
+}
+
+// ---------------------------------------------------------------- Tutoriel
+// Mannequin d'entraînement : immobile, ou attaque / balaye sur demande de l'étape
+class TutorAI {
+  constructor(f) { this.f = f; this.cool = 40; }
+  decide(opp, inp) {
+    const raw = inp.raw; ACTIONS.forEach(a => raw[a] = false);
+    if (this.f.busy || !game.tut) return;
+    const mode = game.tut.steps[game.tut.i].dummy || 'idle';
+    const dx = opp.x - this.f.x, dist = Math.abs(dx), toward = dx > 0 ? 'right' : 'left';
+    if (mode === 'attack' || mode === 'sweep') {
+      if (dist > 130) { raw[toward] = true; return; }
+      if (this.cool-- <= 0) { if (mode === 'sweep') { raw.down = true; raw.K = true; } else raw.L = true; this.cool = 55; }
+    }
+  }
+}
+const CHAR_TIPS = {
+  eira:    ["Onde de choc : projectile qui court au sol. Saute par-dessus si on t'en envoie une.", "Séisme (super) touche des DEUX côtés : parfait quand tu es encerclée ou dans le coin."],
+  dante:   ["Éruption a de l'armure : elle encaisse les coups légers sans s'interrompre.", "Forme de lave (super) : Balrog pendant 30 s, +30 % de dégâts. Déclenche-la tôt dans le round."],
+  saerynn: ["Éclats d'acier contrôlent la distance : tire, puis avance derrière le projectile.", "Forêt de lames (super) couvre 560 px : punis un adversaire qui recule ou saute."],
+  cassius: ["Pas d'ombre traverse les projectiles au sol et te colle à l'adversaire.", "Nuit tombée (super) : 6 coups. Place-la quand l'adversaire se relève ou finit un coup."],
+};
+function makeTut(def) {
+  const L = () => bindLabel(0, 'L'), Hh = () => bindLabel(0, 'H'), K = () => bindLabel(0, 'K'), S = () => bindLabel(0, 'S');
+  const mv = a => keyLabel(binds[0][a][0]);
+  const steps = [
+    { title: 'Déplacement', text: () => 'Avance (' + mv('right') + ') puis recule (' + mv('left') + '). Reculer sert aussi à bloquer.', check: f => f.fwd && f.back },
+    { title: 'Saut et accroupi', text: () => 'Saute (' + mv('up') + ') puis accroupis-toi (' + mv('down') + ').', check: f => f.jump && f.crouch },
+    { title: 'Coup léger', text: () => 'Touche le mannequin avec un coup LÉGER : ' + L() + '. Rapide, peu de dégâts, sûr.', check: f => f.hitL },
+    { title: 'Coup lourd', text: () => 'Coup LOURD : ' + Hh() + '. Lent mais puissant, et il passe au-dessus des gardes accroupies.', check: f => f.hitH },
+    { title: 'Balayette', text: () => 'Accroupi (' + mv('down') + ') + pied (' + K() + ') : la balayette met à terre.', check: f => f.hitcK },
+    { title: 'Bloquer', text: () => 'Le mannequin attaque : tiens ' + mv('left') + ' (reculer) pour bloquer deux coups.', dummy: 'attack', check: f => f.blocked >= 2 },
+    { title: 'Bloquer bas', text: () => 'Il balaye : les coups BAS se bloquent accroupi : ' + mv('down') + ' + ' + mv('left') + '.', dummy: 'sweep', check: f => f.blockedLow },
+    { title: 'Spécial', text: () => def.moves.special.name + ' : ' + mv('down') + ' ' + mv('right') + ' + coup, ou simplement ' + S() + '.', check: f => f.special },
+    { title: 'Super', text: () => def.moves.super.name + ' : jauge pleine (offerte), puis ' + mv('down') + ' + ' + S() + '.', enter: () => { game.p[0].meter = METER_MAX; }, check: f => f.super },
+    { title: 'Conseils ' + def.name, text: () => CHAR_TIPS[def.id][0], text2: () => CHAR_TIPS[def.id][1], check: f => f.tipT > 420 },
+    { title: 'Tutoriel terminé', text: () => 'Bravo. Entrée / Start pour revenir au titre, ou continue à t\'entraîner.', end: true, check: () => false },
+  ];
+  return { steps, i: 0, flags: { blocked: 0, tipT: 0 }, doneT: 0 };
+}
+function updateTut() {
+  const T = game.tut, p0 = game.p[0], p1 = game.p[1], f = T.flags, st = T.steps[T.i];
+  game.timer = 99; game.timerAcc = 0; p0.hp = p0.def.hp; p1.hp = p1.def.hp; p1.meter = 0;
+  if (p0.state === 'walk') { if (p0.walkDir > 0) f.fwd = true; else f.back = true; }
+  if (p0.state === 'jump') f.jump = true;
+  if (p0.crouch && p0.state === 'crouch') f.crouch = true;
+  if (p0.state === 'attack' && p0.moveKey === 'special') f.special = true;
+  if (p0.state === 'attack' && p0.moveKey === 'super') f.super = true;
+  if (st.text2) f.tipT++;
+  if (T.doneT > 0) { if (--T.doneT === 0) { T.i++; T.flags = { blocked: 0, tipT: 0 }; const n = T.steps[T.i]; if (n.enter) n.enter(); SFX.round(); } return; }
+  if (!st.end && st.check(f)) { T.doneT = 70; SFX.confirm(); }
+  if (st.end && inputs[0].pressed('start')) { game.tut = null; game.screen = 'title'; game.t = 0; musicStop(); }
+}
+function drawTut(c) {
+  const T = game.tut, st = T.steps[T.i], done = T.doneT > 0;
+  const y = 92, h = st.text2 ? 96 : 74;
+  c.fillStyle = 'rgba(5,5,12,.78)'; c.fillRect(W / 2 - 400, y, 800, h);
+  c.strokeStyle = done ? '#7be07a' : '#d4a92c'; c.lineWidth = 2; c.strokeRect(W / 2 - 400, y, 800, h);
+  c.textAlign = 'left'; c.font = 'bold 18px Cinzel, Impact'; c.fillStyle = done ? '#7be07a' : '#d4a92c';
+  c.fillText((st.end ? '' : (T.i + 1) + ' / ' + (T.steps.length - 1) + '  ·  ') + st.title + (done ? '   ✓' : ''), W / 2 - 385, y + 26);
+  c.font = '16px Arial'; c.fillStyle = '#eee'; c.fillText(st.text(), W / 2 - 385, y + 52);
+  if (st.text2) c.fillText(st.text2(), W / 2 - 385, y + 76);
+  c.textAlign = 'center'; c.font = '13px Arial'; c.fillStyle = '#9a9aa8'; c.fillText('TUTORIEL · PV et temps figés · Échap : quitter', W / 2, y + h + 16);
 }
 
 // ---------------------------------------------------------------- Jeu
@@ -1040,6 +1110,7 @@ function startMatch(seed) {
   const c1 = CHARS[ROSTER[game.sel[0].idx]], c2 = CHARS[ROSTER[game.sel[1].idx]];
   game.p[0] = new Fighter(c1, 0); game.p[1] = new Fighter(c2, 1);
   if (game.mode === '1p' && !NET.active) game.p[1].ai = new AI(game.p[1], game.difficulty);
+  if (game.mode === 'tuto') { game.p[1].ai = new TutorAI(game.p[1]); game.tut = makeTut(c1); }
   // en ligne, la graine vient de l'hôte : les deux PC choisissent le même stage
   game.stage = (seed !== undefined ? (seed & 1) === 0 : Math.random() < 0.5) ? c1.faction : c2.faction;
   game.round = 1; game.p[0].wins = 0; game.p[1].wins = 0; game.matchWinner = null;
@@ -1068,6 +1139,8 @@ game.resolveHit = function (att, def, m, hb) {
     return true;
   }
   const cx = Math.max(hb.x, def.hurtbox().x) + Math.min(hb.w, def.hurtbox().w) / 2, cy = hb.y + hb.h / 2;
+  if (game.tut && def === game.p[0] && blocked) { game.tut.flags.blocked++; if (m.low) game.tut.flags.blockedLow = true; }
+  if (game.tut && att === game.p[0] && !blocked) game.tut.flags['hit' + att.moveKey] = true;
   if (blocked) {
     def.takeHit(att, m, true, hb); SFX.block(); spark(cx, cy, '#8fd3ff', 6); spawnVfx('hit', cx, cy, { scale: 0.2, dur: 2 });
     att.meter = Math.min(METER_MAX, att.meter + 8);
@@ -1106,6 +1179,7 @@ function updateFight() {
     return;
   }
   if (game.hitstop > 0) { game.hitstop--; if (game.phase === 'ko') p0.anim++, p1.anim++; return; }
+  if (game.tut && game.phase === 'fight') updateTut();
   if (game.phase === 'fight') {
     game.timerAcc++; if (game.timerAcc >= 60) { game.timerAcc = 0; game.timer--; }
     if (game.timer <= 0) { game.timer = 0; game.phase = 'timeout'; game.phaseT = 0; game.winner = p0.hp === p1.hp ? null : p0.hp > p1.hp ? p0 : p1; setBanner('TEMPS ÉCOULÉ', 120); }
@@ -1202,6 +1276,7 @@ function drawHUD(c) {
     if (im) c.drawImage(im, px, y - 3, size, size); else { c.fillStyle = '#222'; c.fillRect(px, y - 3, size, size); }
   };
   bar(p0, 80, 1); bar(p1, W - 80 - bw, -1);
+  game.p.forEach((p, i) => { if (p.transform > 0) { c.font = 'bold 14px Cinzel, Impact'; c.textAlign = i === 0 ? 'left' : 'right'; c.fillStyle = '#ff8a2a'; c.fillText('FORME DE LAVE ' + Math.ceil(p.transform / 60) + ' s', i === 0 ? 80 : W - 80, 92); } });
   // timer
   c.fillStyle = '#111'; c.fillRect(W / 2 - 40, 14, 80, 46);
   c.font = 'bold 36px Cinzel, Impact, Arial Black, sans-serif'; c.textAlign = 'center'; c.fillStyle = game.timer <= 10 ? '#ff3a2a' : '#fff';
@@ -1238,9 +1313,11 @@ function drawFight(c) {
   c.restore();
   if (game.flash > 0) { c.fillStyle = 'rgba(255,255,255,' + (game.flash / 20) * 0.7 + ')'; c.fillRect(0, 0, W, H); game.flash--; }
   drawHUD(c);
+  if (game.tut) drawTut(c);
   if (NET.active) {
     c.font = '13px Arial'; c.textAlign = 'center'; c.fillStyle = '#9a9aa8';
     c.fillText('EN LIGNE · ping ' + Math.round(NET.rtt) + ' ms · délai ' + NET.delay + ' f', W / 2, 78);
+    // (rien)
     if (NET.waiting > 10) { c.font = 'bold 20px Arial'; c.fillStyle = '#ffd21e'; c.fillText('⏳ En attente de l\'adversaire…', W / 2, 110); }
     if (NET.desync) { c.font = 'bold 16px Arial'; c.fillStyle = '#ff5a4a'; c.fillText('Désynchronisation détectée — relancez un match', W / 2, 132); }
   }
@@ -1267,11 +1344,11 @@ function drawTitle(c) {
   c.font = 'bold 30px Cinzel, Impact'; c.fillStyle = FACTIONS.rebels.color; c.fillText('REBELLES', W / 2 - 150, 245);
   c.fillStyle = '#fff'; c.fillText('VS', W / 2, 245);
   c.fillStyle = FACTIONS.loyalists.color; c.fillText('LOYALISTES', W / 2 + 160, 245);
-  const opts = ['1 JOUEUR  vs  IA', '2 JOUEURS', 'EN LIGNE', 'TOUCHES'];
+  const opts = ['1 JOUEUR  vs  IA', '2 JOUEURS', 'EN LIGNE', 'TUTORIEL', 'TOUCHES'];
   const diffs = ['FACILE', 'NORMAL', 'DIFFICILE'];
   opts.forEach((o, i) => {
     const sel = game.menu === i;
-    c.font = 'bold 32px Cinzel, Impact'; c.fillStyle = sel ? '#ffd21e' : '#aaa'; c.fillText((sel ? '▶ ' : '') + o, W / 2, 300 + i * 40);
+    c.font = 'bold 32px Cinzel, Impact'; c.fillStyle = sel ? '#ffd21e' : '#aaa'; c.fillText((sel ? '▶ ' : '') + o, W / 2, 290 + i * 36);
   });
   c.font = 'bold 20px Cinzel, Impact'; c.fillStyle = '#ccc'; c.fillText('DIFFICULTÉ IA :  ◀ ' + diffs[game.difficulty] + ' ▶   (gauche / droite)', W / 2, 450);
   c.font = '15px Arial'; c.fillStyle = '#9a9aa8'; c.fillText(controlsLine(0), W / 2, 478);
@@ -1279,15 +1356,16 @@ function drawTitle(c) {
   else if (Math.floor(game.t / 30) % 2 === 0) { c.font = 'bold 22px Cinzel, Impact'; c.fillStyle = '#fff'; c.fillText('ENTRÉE / ESPACE pour valider', W / 2, 510); }
   inputs.forEach(i => i.poll());
   const any = a => inputs.some(i => i.pressed(a));
-  if (any('up')) { game.menu = (game.menu + 3) % 4; SFX.select(); }
-  if (any('down')) { game.menu = (game.menu + 1) % 4; SFX.select(); }
+  if (any('up')) { game.menu = (game.menu + 4) % 5; SFX.select(); }
+  if (any('down')) { game.menu = (game.menu + 1) % 5; SFX.select(); }
   if (any('left')) { game.difficulty = (game.difficulty + 2) % 3; SFX.select(); }
   if (any('right')) { game.difficulty = (game.difficulty + 1) % 3; SFX.select(); }
   if (any('start') || any('L') || any('H') || any('K')) {
     SFX.confirm();
-    if (game.menu === 3) { game.screen = 'keys'; keysUI.row = 0; keysUI.col = 0; keysUI.rebinding = false; game.t = 0; return; }
+    if (game.menu === 4) { game.screen = 'keys'; keysUI.row = 0; keysUI.col = 0; keysUI.rebinding = false; game.t = 0; return; }
+    if (game.menu === 3) { game.mode = 'tuto'; game.notice = ''; game.screen = 'select'; game.sel = [{ idx: 0, done: false }, { idx: 2, done: false }]; game.selTurn = 0; game.t = 0; return; }
     if (game.menu === 2) { game.screen = 'online'; NET.ui = 0; NET.sub = 0; NET.error = ''; clearInputs(); game.t = 0; return; }
-    game.mode = game.menu === 1 ? '2p' : '1p';
+    game.mode = game.menu === 1 ? '2p' : '1p'; game.tut = null;
     game.notice = (game.mode === '2p' && resolve2pConflict()) ? 'Touches en conflit : P1 passe sur ' + PRESETS[binds[0].preset].name : '';
     game.screen = 'select'; game.sel = [{ idx: 0, done: false }, { idx: 3, done: false }]; game.selTurn = 0; game.t = 0;
   }
@@ -1353,7 +1431,7 @@ function drawSelect(c) {
   const sp = d.moves.special, su = d.moves.super;
   const pi = (game.mode === '2p' && !NET.active) ? game.selTurn : 0;
   c.fillText('PV ' + d.hp + '   ·   Spécial : ' + sp.name + ' (↓↘→ + coup, ou ' + bindLabel(pi, 'S') + ')   ·   Super : ' + su.name + ' (jauge pleine, ' + keyLabel(binds[pi].down[0]) + ' + ' + bindLabel(pi, 'S') + ')', W / 2, 415);
-  c.fillStyle = '#999'; c.fillText(NET.active ? ('EN LIGNE · salle ' + NET.code + ' · vous êtes P' + (NET.me + 1) + ' · ping ' + Math.round(NET.rtt) + ' ms · délai ' + NET.delay + ' frames' + (cur.done ? ' · en attente de l\'adversaire…' : '')) : ((game.mode === '1p' ? 'Choisissez P1 puis l\'adversaire IA' : 'P1 puis P2 choisissent') + (game.notice ? '   —   ' + game.notice : '')), W / 2, 445);
+  c.fillStyle = '#999'; c.fillText(game.mode === 'tuto' ? 'TUTORIEL : choisis le personnage à apprendre' : NET.active ? ('EN LIGNE · salle ' + NET.code + ' · vous êtes P' + (NET.me + 1) + ' · ping ' + Math.round(NET.rtt) + ' ms · délai ' + NET.delay + ' frames' + (cur.done ? ' · en attente de l\'adversaire…' : '')) : ((game.mode === '1p' ? 'Choisissez P1 puis l\'adversaire IA' : 'P1 puis P2 choisissent') + (game.notice ? '   —   ' + game.notice : '')), W / 2, 445);
   c.fillText(controlsLine(pi), W / 2, 470);
   c.fillText('Bloquer : reculer · Bloquer bas : accroupi + reculer · Balayette : accroupi + pied · Anti-air : accroupi + lourd · Échap : retour', W / 2, 495);
   inputs.forEach(i => i.poll());
@@ -1374,12 +1452,13 @@ function drawSelect(c) {
     if (pr('right')) { cur.idx = (cur.idx + 1) % 4; SFX.select(); }
     if (pr('L') || pr('H') || pr('K') || pr('start') || pr('S')) {
       cur.done = true; SFX.confirm();
+      if (game.mode === 'tuto') { game.sel[1].idx = cur.idx < 2 ? 2 : 0; game.sel[1].done = true; startMatch(); return; }
       if (game.selTurn === 0) { game.selTurn = 1; game.sel[1].idx = game.sel[0].idx < 2 ? 2 + Math.floor(Math.random() * 2) : Math.floor(Math.random() * 2); }
       else { startMatch(); }
     }
   }
 }
-window.addEventListener('keydown', e => { if (keyCode(e) === 'Escape' && game.screen !== 'keys' && game.screen !== 'online') { if (game.screen === 'select' || game.screen === 'result' || game.screen === 'fight' || game.screen === 'vs') { if (NET.active) netClose(); game.screen = 'title'; game.t = 0; musicStop(); } } });
+window.addEventListener('keydown', e => { if (keyCode(e) === 'Escape' && game.screen !== 'keys' && game.screen !== 'online') { if (game.screen === 'select' || game.screen === 'result' || game.screen === 'fight' || game.screen === 'vs') { if (NET.active) netClose(); game.tut = null; game.screen = 'title'; game.t = 0; musicStop(); } } });
 function drawVS(c) {
   game.t++;
   const a = game.p[0].def, b = game.p[1].def;
