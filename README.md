@@ -40,6 +40,22 @@ A pied, B ou RB spécial, Start. **M** coupe la musique, **Échap** revient au t
 - Les combos réduisent les dégâts (−12 % par coup, plancher 30 %). Un adversaire acculé dans
   le coin repousse l'attaquant.
 
+## Jouer en ligne (deux PC)
+
+Écran titre → **EN LIGNE**. Un joueur choisit **Héberger** et obtient un code de 5 caractères ;
+l'autre choisit **Rejoindre** et le saisit. Connexion directe entre les deux navigateurs
+(WebRTC via PeerJS, aucun serveur de jeu) ; l'hôte est P1, l'invité P2, chacun joue avec ses
+touches « Joueur 1 ».
+
+- Netcode **lockstep** : chaque PC simule le même combat et n'échange que les entrées, retardées
+  d'un délai fixé au ping mesuré à la connexion (2 à 8 frames, soit 33 à 133 ms). Un contrôle
+  d'état toutes les 60 frames signale une éventuelle désynchronisation.
+- Il faut internet pour la mise en relation (serveur PeerJS public) ; ensuite le trafic est P2P.
+  Derrière un réseau très fermé (entreprise, 4G stricte) la connexion peut échouer : essayez en
+  inversant hôte / invité.
+- Fonctionne avec le fichier `index.html` / `empyrean-fighter-standalone.html` ouvert dans
+  Chrome, Edge ou Firefox. **Pas dans l'Artifact Claude** (les connexions réseau y sont bloquées).
+
 ## Roster
 
 | Faction      | Personnage | Style                        | Spécial                              | Super                        |

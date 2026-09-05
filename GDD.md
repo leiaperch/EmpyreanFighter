@@ -53,6 +53,13 @@ atteint > 45 % de la barre sans super : repasser le coefficient à 0.15.
 Pendant startup + active du spécial/super : subit 50 % des dégâts, aucun stun. Contre-jeu :
 balayette (met à terre) ou projectile en retrait.
 
+### En ligne (lockstep P2P)
+Simulation déterministe pilotée uniquement par les entrées (pas fixe 60 Hz, aucun `Math.random`
+dans le gameplay hors IA — le stage vient d'une graine envoyée par l'hôte). Délai d'entrée
+`delay = clamp(ceil(RTT/2/16.7 ms) + 1, 2, 8)`. Si l'entrée distante manque, la simulation
+s'arrête (⏳) plutôt que de diverger. Rollback : hors périmètre v0.4, à envisager si le délai
+gêne au-delà de 80 ms de ping.
+
 ### IA (3 niveaux)
 Réaction 34 / 20 / 9 frames, agressivité 0.3 / 0.5 / 0.75. Saute ou recule devant un
 projectile, bloque (haut/bas selon le coup) à 55 % + 15 %/niveau, anti-air quand on saute,
@@ -76,6 +83,8 @@ projectile, bloque (haut/bas selon le coup) à 55 % + 15 %/niveau, anti-air quan
   bloquable debout ou accroupi.
 
 ## Changelog
+
+- 0.4 (2026-09-05) : mode en ligne P2P (PeerJS), écran Touches et préréglages clavier PC, buffer d'entrée.
 
 - 0.1 (2026-09-05) : première version jouable. Ajout scaling de combo, repoussée de coin et
   pause IA après combo suite au premier playtest (IA Normal tuait en 4 s dans le coin).

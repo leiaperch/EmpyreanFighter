@@ -15,6 +15,7 @@
 <body>
 <div id="wrap"><canvas id="c" width="960" height="540"></canvas></div>
 <div id="hint"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
 <script>
 'use strict';
 // =====================================================================
@@ -216,6 +217,7 @@ window.addEventListener('keydown', e => {
   const code = keyCode(e);
   if (e.key && e.key.length === 1 && e.key !== ' ') { learned[code] = e.key; if (code === 'KeyQ' && e.key.toLowerCase() === 'a') { azerty = true; updateHint(); } }
   if (game.screen === 'keys') { e.preventDefault(); if (!e.repeat) keysNavigate(code); return; }
+  if (game.screen === 'online') { e.preventDefault(); if (!e.repeat) onlineKey(code, e); return; }
   if (e.key === 'm' || e.key === 'M') { musicOn = !musicOn; if (musicEl) { if (musicOn && musicWanted) musicEl.play().catch(() => {}); else musicEl.pause(); } }
   if (codeMap[code]) { codeMap[code].forEach(([i, a]) => { if (!inputs[i].raw[a]) inputs[i].latch[a] = true; inputs[i].raw[a] = true; }); e.preventDefault(); }
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(code)) e.preventDefault();
@@ -747,6 +749,161 @@ class AI {
 }
 
 // ---------------------------------------------------------------- Jeu
+// ---------------------------------------------------------------- En ligne (P2P WebRTC, lockstep)
+// Chaque PC simule le même combat : on n'échange que les entrées, retardées de NET.delay frames
+// pour absorber le ping. L'hôte est P1, l'invité P2 ; chacun joue avec ses touches « Joueur 1 ».
+const NET = {
+  active: false, role: null, peer: null, conn: null, code: '', status: '', error: '',
+  me: 0, delay: 3, frame: 0, local: {}, remote: {}, inputs: null, waiting: 0, rtt: 0, pingT: 0,
+  hashes: {}, rhashes: {}, desync: false, again: [false, false], ui: 0, sub: 0, input: '',
+};
+function netInputObj() { const o = { cur: {}, prev: {} }; ACTIONS.forEach(a => { o.cur[a] = false; o.prev[a] = false; }); o.held = a => o.cur[a]; o.pressed = a => o.cur[a] && !o.prev[a]; return o; }
+function encodeBits(cur) { let b = 0; ACTIONS.forEach((a, i) => { if (cur[a]) b |= 1 << i; }); return b; }
+function applyBits(o, bits) { o.prev = o.cur; o.cur = {}; ACTIONS.forEach((a, i) => o.cur[a] = !!(bits & (1 << i))); }
+function clearInputs() { inputs.forEach(i => ACTIONS.forEach(a => { i.raw[a] = false; i.latch[a] = false; i.cur[a] = false; i.prev[a] = false; })); }
+function netReset() {
+  NET.frame = 0; NET.local = {}; NET.remote = {}; NET.inputs = [netInputObj(), netInputObj()]; NET.waiting = 0;
+  NET.hashes = {}; NET.rhashes = {}; NET.desync = false; NET.again = [false, false];
+  for (let f = 0; f < NET.delay; f++) { NET.local[f] = 0; NET.remote[f] = 0; }
+}
+function netSend(msg) { if (NET.conn && NET.conn.open) { try { NET.conn.send(msg); } catch (e) {} } }
+function netCode() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let c = ''; for (let i = 0; i < 5; i++) c += A[Math.floor(Math.random() * A.length)]; return c; }
+function netErr(err) {
+  const t = err && err.type;
+  if (t === 'peer-unavailable') return 'Salle introuvable : vérifie le code';
+  if (t === 'network' || t === 'server-error' || t === 'socket-error') return 'Serveur de signalisation injoignable (internet ?)';
+  if (t === 'unavailable-id') return 'Code déjà utilisé, réessaie';
+  return 'Erreur réseau : ' + ((err && err.message) || t || '?');
+}
+function netHost() {
+  netClose(); NET.role = 'host'; NET.me = 0; NET.code = netCode(); NET.status = 'Création de la salle…'; NET.error = ''; NET.ui = 1;
+  if (typeof Peer === 'undefined') { NET.error = 'PeerJS non chargé : connexion internet requise'; return; }
+  NET.peer = new Peer('empyrean-' + NET.code);
+  NET.peer.on('open', () => { NET.status = 'En attente d\'un adversaire…'; });
+  NET.peer.on('connection', conn => { if (NET.conn) { conn.close(); return; } NET.conn = conn; netWire(conn); });
+  NET.peer.on('error', err => { NET.error = netErr(err); });
+}
+function netJoin(code) {
+  netClose(); NET.role = 'guest'; NET.me = 1; NET.code = code; NET.status = 'Connexion à ' + code + '…'; NET.error = ''; NET.ui = 3;
+  if (typeof Peer === 'undefined') { NET.error = 'PeerJS non chargé : connexion internet requise'; NET.ui = 2; return; }
+  NET.peer = new Peer();
+  NET.peer.on('open', () => { const conn = NET.peer.connect('empyrean-' + code, { reliable: true }); NET.conn = conn; netWire(conn); });
+  NET.peer.on('error', err => { NET.error = netErr(err); NET.ui = 2; });
+}
+function netWire(conn) {
+  conn.on('open', () => {
+    NET.active = true; NET.status = 'Connecté'; SFX.confirm(); clearInputs();
+    game.mode = '2p'; game.notice = ''; game.sel = [{ idx: 0, done: false }, { idx: 3, done: false }]; game.selTurn = 0; game.screen = 'select'; game.t = 0;
+    if (NET.role === 'host') { NET.pingT = performance.now(); netSend({ t: 'ping' }); }
+  });
+  conn.on('data', netOnData);
+  const bye = () => {
+    if (!NET.active && !NET.conn) return;
+    netClose(); musicStop(); clearInputs();
+    NET.error = 'Adversaire déconnecté'; NET.ui = 0; game.screen = 'online'; game.t = 0;
+  };
+  conn.on('close', bye); conn.on('error', bye);
+}
+function netOnData(m) {
+  if (!m || typeof m !== 'object') return;
+  switch (m.t) {
+    case 'ping': netSend({ t: 'pong' }); break;
+    case 'pong': NET.rtt = performance.now() - NET.pingT; NET.delay = Math.max(2, Math.min(8, Math.ceil(NET.rtt / 2 / STEP) + 1)); netSend({ t: 'delay', d: NET.delay, rtt: NET.rtt }); break;
+    case 'delay': NET.delay = m.d; NET.rtt = m.rtt; break;
+    case 'sel': game.sel[1 - NET.me].idx = m.idx; break;
+    case 'ok': game.sel[1 - NET.me].idx = m.idx; game.sel[1 - NET.me].done = true; netTryStart(); break;
+    case 'start': game.sel[0].idx = m.p0; game.sel[1].idx = m.p1; NET.delay = m.delay; netReset(); startMatch(m.seed); break;
+    case 'i': NET.remote[m.f] = m.b; break;
+    case 'h': { const mine = NET.hashes[m.f]; if (mine === undefined) NET.rhashes[m.f] = m.h; else if (mine !== m.h) NET.desync = true; break; }
+    case 'again': NET.again[1 - NET.me] = true; netTryAgain(); break;
+  }
+}
+function netTryStart() {
+  if (NET.role !== 'host' || !game.sel[0].done || !game.sel[1].done) return;
+  const seed = (Math.random() * 0x7fffffff) | 0;
+  netSend({ t: 'start', p0: game.sel[0].idx, p1: game.sel[1].idx, seed, delay: NET.delay });
+  netReset(); startMatch(seed);
+}
+function netTryAgain() {
+  if (!NET.again[0] || !NET.again[1]) return;
+  game.sel = [{ idx: game.sel[0].idx, done: false }, { idx: game.sel[1].idx, done: false }]; game.selTurn = 0; game.screen = 'select'; game.t = 0; NET.again = [false, false]; SFX.confirm();
+}
+// Une frame de simulation en ligne : false = on attend encore l'entrée distante
+function netStep() {
+  const f = NET.frame;
+  if (NET.local[f + NET.delay] === undefined) {
+    inputs[0].poll(); const bits = encodeBits(inputs[0].cur);
+    NET.local[f + NET.delay] = bits; netSend({ t: 'i', f: f + NET.delay, b: bits });
+  }
+  if (NET.remote[f] === undefined) { NET.waiting++; return false; }
+  NET.waiting = 0;
+  applyBits(NET.inputs[NET.me], NET.local[f]); applyBits(NET.inputs[1 - NET.me], NET.remote[f]);
+  delete NET.local[f - 2]; delete NET.remote[f - 2];
+  if (f % 60 === 0 && game.p[0]) {
+    const h = netHash(); NET.hashes[f] = h; netSend({ t: 'h', f, h });
+    if (NET.rhashes[f] !== undefined && NET.rhashes[f] !== h) NET.desync = true;
+    for (const k in NET.hashes) if (+k < f - 600) { delete NET.hashes[k]; delete NET.rhashes[k]; }
+  }
+  NET.frame++;
+  return true;
+}
+function netHash() { const p = game.p; let h = 0; [p[0].x, p[0].y, p[0].hp, p[0].meter, p[1].x, p[1].y, p[1].hp, p[1].meter, game.timer, game.round].forEach(v => { h = (h * 31 + Math.round(v * 100)) | 0; }); return h; }
+function netClose() {
+  NET.active = false;
+  try { if (NET.conn) NET.conn.close(); } catch (e) {}
+  try { if (NET.peer) NET.peer.destroy(); } catch (e) {}
+  NET.conn = null; NET.peer = null; NET.status = ''; NET.input = '';
+}
+window.addEventListener('beforeunload', () => { if (NET.active) netClose(); });
+// Écran « En ligne » : ui 0 = menu, 1 = hôte (salle ouverte), 2 = saisie du code, 3 = connexion en cours
+function onlineKey(code, e) {
+  if (NET.ui === 0) {
+    if (code === 'ArrowUp') { NET.sub = (NET.sub + 2) % 3; SFX.select(); }
+    if (code === 'ArrowDown') { NET.sub = (NET.sub + 1) % 3; SFX.select(); }
+    if (code === 'Enter' || code === 'Space' || code === 'NumpadEnter') { SFX.confirm(); if (NET.sub === 0) netHost(); else if (NET.sub === 1) { NET.ui = 2; NET.input = ''; NET.error = ''; } else { game.screen = 'title'; game.t = 0; } }
+    if (code === 'Escape') { game.screen = 'title'; game.t = 0; }
+  } else if (NET.ui === 1 || NET.ui === 3) {
+    if (code === 'Escape') { netClose(); NET.ui = 0; NET.error = ''; }
+  } else if (NET.ui === 2) {
+    const k = (e.key || '').toUpperCase();
+    if (/^[A-Z0-9]$/.test(k) && NET.input.length < 5) NET.input += k;
+    else if (code === 'Backspace') NET.input = NET.input.slice(0, -1);
+    else if ((code === 'Enter' || code === 'NumpadEnter') && NET.input.length === 5) netJoin(NET.input);
+    else if (code === 'Escape') { NET.ui = 0; NET.error = ''; }
+  }
+}
+function drawOnline(c) {
+  game.t++;
+  const g = c.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#2a0507'); g.addColorStop(0.5, '#05050a'); g.addColorStop(1, '#070f2a');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  c.textAlign = 'center'; c.font = 'bold 44px Cinzel, Impact'; c.lineWidth = 6; c.strokeStyle = '#000';
+  c.strokeText('EN LIGNE', W / 2, 70); c.fillStyle = '#d4a92c'; c.fillText('EN LIGNE', W / 2, 70);
+  c.font = '16px Arial'; c.fillStyle = '#9a9aa8';
+  c.fillText('Connexion directe entre deux PC (WebRTC). L\'hôte est P1, l\'invité P2 ; chacun joue avec ses touches « Joueur 1 ».', W / 2, 105);
+  if (NET.ui === 0) {
+    ['HÉBERGER UNE SALLE', 'REJOINDRE AVEC UN CODE', 'RETOUR'].forEach((o, i) => {
+      const sel = NET.sub === i; c.font = 'bold 30px Cinzel, Impact'; c.fillStyle = sel ? '#ffd21e' : '#aaa'; c.fillText((sel ? '▶ ' : '') + o, W / 2, 210 + i * 56);
+    });
+    c.font = '15px Arial'; c.fillStyle = '#7a7a88';
+    c.fillText('L\'hôte crée la salle et communique son code de 5 caractères (Discord, SMS…) ; l\'invité le saisit.', W / 2, 420);
+    c.fillText('Nécessite internet. Si la connexion échoue (réseau d\'entreprise, box stricte), essayez en inversant hôte / invité.', W / 2, 445);
+  } else if (NET.ui === 1) {
+    c.font = '20px Arial'; c.fillStyle = '#ddd'; c.fillText('Code de la salle — à donner à votre adversaire :', W / 2, 190);
+    c.font = '900 92px "Cinzel Decorative", Cinzel, Impact'; c.lineWidth = 8; c.strokeStyle = '#000'; c.strokeText(NET.code, W / 2, 300);
+    const g2 = c.createLinearGradient(0, 220, 0, 310); g2.addColorStop(0, '#fff3c4'); g2.addColorStop(1, '#d4a92c'); c.fillStyle = g2; c.fillText(NET.code, W / 2, 300);
+    c.font = '20px Arial'; c.fillStyle = '#ddd'; c.fillText(NET.status + (Math.floor(game.t / 20) % 3 === 0 ? '' : Math.floor(game.t / 20) % 3 === 1 ? ' .' : ' . .'), W / 2, 360);
+  } else if (NET.ui === 2 || NET.ui === 3) {
+    c.font = '20px Arial'; c.fillStyle = '#ddd'; c.fillText('Saisissez le code de la salle :', W / 2, 190);
+    const shown = (NET.input + '_____').slice(0, 5).split('').join(' ');
+    c.font = '900 80px "Cinzel Decorative", Cinzel, Impact'; c.lineWidth = 8; c.strokeStyle = '#000'; c.strokeText(shown, W / 2, 300);
+    c.fillStyle = NET.ui === 3 ? '#9a9aa8' : '#fff3c4'; c.fillText(shown, W / 2, 300);
+    c.font = '18px Arial'; c.fillStyle = '#ddd';
+    c.fillText(NET.ui === 3 ? NET.status : (NET.input.length === 5 ? 'Entrée pour se connecter' : 'Tapez les 5 caractères (lettres et chiffres)'), W / 2, 360);
+  }
+  if (NET.error) { c.font = 'bold 18px Arial'; c.fillStyle = '#ff5a4a'; c.fillText(NET.error, W / 2, 400); }
+  c.font = '15px Arial'; c.fillStyle = '#7a7a88'; c.fillText('Échap : retour', W / 2, 505);
+}
+
 const game = {
   screen: 'title', t: 0, mode: '1p', difficulty: 1, menu: 0, notice: '',
   sel: [{ idx: 0, done: false }, { idx: 3, done: false }], selTurn: 0,
@@ -757,11 +914,12 @@ const game = {
 };
 function setBanner(txt, dur, sub) { game.banner = txt; game.bannerSub = sub || ''; game.bannerT = dur; }
 
-function startMatch() {
+function startMatch(seed) {
   const c1 = CHARS[ROSTER[game.sel[0].idx]], c2 = CHARS[ROSTER[game.sel[1].idx]];
   game.p[0] = new Fighter(c1, 0); game.p[1] = new Fighter(c2, 1);
-  if (game.mode === '1p') game.p[1].ai = new AI(game.p[1], game.difficulty);
-  game.stage = Math.random() < 0.5 ? c1.faction : c2.faction;
+  if (game.mode === '1p' && !NET.active) game.p[1].ai = new AI(game.p[1], game.difficulty);
+  // en ligne, la graine vient de l'hôte : les deux PC choisissent le même stage
+  game.stage = (seed !== undefined ? (seed & 1) === 0 : Math.random() < 0.5) ? c1.faction : c2.faction;
   game.round = 1; game.p[0].wins = 0; game.p[1].wins = 0; game.matchWinner = null;
   startRound();
   game.screen = 'vs'; game.t = 0;
@@ -813,6 +971,8 @@ game.onKO = function (winner, loser) {
 
 function updateFight() {
   const p0 = game.p[0], p1 = game.p[1];
+  let fi = inputs;
+  if (NET.active) { if (!netStep()) return false; fi = NET.inputs; }
   game.phaseT++;
   if (game.phase === 'intro') {
     if (game.phaseT === 1) { setBanner('ROUND ' + game.round, 70); SFX.round(); }
@@ -831,8 +991,8 @@ function updateFight() {
   if (game.phase === 'fight') {
     game.p.forEach((p, i) => { if (p.ai) p.ai.decide(game.p[1 - i], inputs[i]); });
   }
-  inputs.forEach(i => i.poll());
-  if (game.phase === 'fight') { p0.update(inputs[0], p1); p1.update(inputs[1], p0); }
+  if (!NET.active) inputs.forEach(i => i.poll());
+  if (game.phase === 'fight') { p0.update(fi[0], p1); p1.update(fi[1], p0); }
   else { // ko / timeout : on laisse retomber
     game.p.forEach((p, i) => { p.t++; p.anim++; if (!p.grounded) { p.vy += p.def.gravity; p.y += p.vy; p.x += p.vx; if (p.y >= GROUND) { p.y = GROUND; p.grounded = true; p.vx = 0; if (p.state === 'ko') game.shake = 8; else if (p.state === 'hit' && p.knockdown) p.state = 'knockdown'; } } else if (p.state === 'hit') { p.x += p.vx; p.vx *= 0.8; } if (p.state === 'knockdown' && p !== game.winner && game.phase !== 'ko') { /* reste au sol */ } });
   }
@@ -953,6 +1113,12 @@ function drawFight(c) {
   c.restore();
   if (game.flash > 0) { c.fillStyle = 'rgba(255,255,255,' + (game.flash / 20) * 0.7 + ')'; c.fillRect(0, 0, W, H); game.flash--; }
   drawHUD(c);
+  if (NET.active) {
+    c.font = '13px Arial'; c.textAlign = 'center'; c.fillStyle = '#9a9aa8';
+    c.fillText('EN LIGNE · ping ' + Math.round(NET.rtt) + ' ms · délai ' + NET.delay + ' f', W / 2, 78);
+    if (NET.waiting > 10) { c.font = 'bold 20px Arial'; c.fillStyle = '#ffd21e'; c.fillText('⏳ En attente de l\'adversaire…', W / 2, 110); }
+    if (NET.desync) { c.font = 'bold 16px Arial'; c.fillStyle = '#ff5a4a'; c.fillText('Désynchronisation détectée — relancez un match', W / 2, 132); }
+  }
   drawBanner(c);
   if (game.phase === 'ko' && game.phaseT > 60 && game.winner) {
     c.font = 'bold 34px Cinzel, Impact'; c.textAlign = 'center'; c.fillStyle = '#fff'; c.strokeStyle = '#000'; c.lineWidth = 6;
@@ -976,24 +1142,25 @@ function drawTitle(c) {
   c.font = 'bold 30px Cinzel, Impact'; c.fillStyle = FACTIONS.rebels.color; c.fillText('REBELLES', W / 2 - 150, 245);
   c.fillStyle = '#fff'; c.fillText('VS', W / 2, 245);
   c.fillStyle = FACTIONS.loyalists.color; c.fillText('LOYALISTES', W / 2 + 160, 245);
-  const opts = ['1 JOUEUR  vs  IA', '2 JOUEURS', 'TOUCHES'];
+  const opts = ['1 JOUEUR  vs  IA', '2 JOUEURS', 'EN LIGNE', 'TOUCHES'];
   const diffs = ['FACILE', 'NORMAL', 'DIFFICILE'];
   opts.forEach((o, i) => {
     const sel = game.menu === i;
-    c.font = 'bold 32px Cinzel, Impact'; c.fillStyle = sel ? '#ffd21e' : '#aaa'; c.fillText((sel ? '▶ ' : '') + o, W / 2, 315 + i * 44);
+    c.font = 'bold 32px Cinzel, Impact'; c.fillStyle = sel ? '#ffd21e' : '#aaa'; c.fillText((sel ? '▶ ' : '') + o, W / 2, 300 + i * 40);
   });
   c.font = 'bold 20px Cinzel, Impact'; c.fillStyle = '#ccc'; c.fillText('DIFFICULTÉ IA :  ◀ ' + diffs[game.difficulty] + ' ▶   (gauche / droite)', W / 2, 450);
   c.font = '15px Arial'; c.fillStyle = '#9a9aa8'; c.fillText(controlsLine(0), W / 2, 478);
   if (Math.floor(game.t / 30) % 2 === 0) { c.font = 'bold 22px Cinzel, Impact'; c.fillStyle = '#fff'; c.fillText('ENTRÉE / ESPACE pour valider', W / 2, 510); }
   inputs.forEach(i => i.poll());
   const any = a => inputs.some(i => i.pressed(a));
-  if (any('up')) { game.menu = (game.menu + 2) % 3; SFX.select(); }
-  if (any('down')) { game.menu = (game.menu + 1) % 3; SFX.select(); }
+  if (any('up')) { game.menu = (game.menu + 3) % 4; SFX.select(); }
+  if (any('down')) { game.menu = (game.menu + 1) % 4; SFX.select(); }
   if (any('left')) { game.difficulty = (game.difficulty + 2) % 3; SFX.select(); }
   if (any('right')) { game.difficulty = (game.difficulty + 1) % 3; SFX.select(); }
   if (any('start') || any('L') || any('H') || any('K')) {
     SFX.confirm();
-    if (game.menu === 2) { game.screen = 'keys'; keysUI.row = 0; keysUI.col = 0; keysUI.rebinding = false; game.t = 0; return; }
+    if (game.menu === 3) { game.screen = 'keys'; keysUI.row = 0; keysUI.col = 0; keysUI.rebinding = false; game.t = 0; return; }
+    if (game.menu === 2) { game.screen = 'online'; NET.ui = 0; NET.sub = 0; NET.error = ''; clearInputs(); game.t = 0; return; }
     game.mode = game.menu === 1 ? '2p' : '1p';
     game.notice = (game.mode === '2p' && resolve2pConflict()) ? 'Touches en conflit : P1 passe sur ' + PRESETS[binds[0].preset].name : '';
     game.screen = 'select'; game.sel = [{ idx: 0, done: false }, { idx: 3, done: false }]; game.selTurn = 0; game.t = 0;
@@ -1050,19 +1217,29 @@ function drawSelect(c) {
       const col = pi === 0 ? '#ffd21e' : '#5ad2ff', blink = s.done || Math.floor(game.t / 8) % 2 === 0;
       if (!blink) return;
       c.strokeStyle = col; c.lineWidth = 5; c.strokeRect(x - 6 + pi * 4, y - 6 + pi * 4, cell + 12 - pi * 8, cell + 12 - pi * 8);
-      c.fillStyle = col; c.font = 'bold 20px Cinzel, Impact'; c.fillText((pi === 0 ? 'P1' : game.mode === '1p' ? 'CPU' : 'P2') + (s.done ? ' ✓' : ''), x + (pi === 0 ? 24 : cell - 24), y + 22);
+      c.fillStyle = col; c.font = 'bold 20px Cinzel, Impact'; c.fillText((pi === 0 ? 'P1' : game.mode === '1p' ? 'CPU' : 'P2') + (NET.active && pi === NET.me ? ' (vous)' : '') + (s.done ? ' ✓' : ''), x + (pi === 0 ? 34 : cell - 34), y + 22);
     });
   });
   // fiche
-  const cur = game.sel[game.selTurn], d = CHARS[ROSTER[cur.idx]];
+  const me = NET.active ? NET.me : game.selTurn;
+  const cur = game.sel[me], d = CHARS[ROSTER[cur.idx]];
   c.font = '17px Arial'; c.fillStyle = '#ddd'; c.textAlign = 'center';
   const sp = d.moves.special, su = d.moves.super;
-  const pi = game.mode === '2p' ? game.selTurn : 0;
+  const pi = (game.mode === '2p' && !NET.active) ? game.selTurn : 0;
   c.fillText('PV ' + d.hp + '   ·   Spécial : ' + sp.name + ' (↓↘→ + coup, ou ' + bindLabel(pi, 'S') + ')   ·   Super : ' + su.name + ' (jauge pleine, ' + keyLabel(binds[pi].down[0]) + ' + ' + bindLabel(pi, 'S') + ')', W / 2, 415);
-  c.fillStyle = '#999'; c.fillText((game.mode === '1p' ? 'Choisissez P1 puis l\'adversaire IA' : 'P1 puis P2 choisissent') + (game.notice ? '   —   ' + game.notice : ''), W / 2, 445);
+  c.fillStyle = '#999'; c.fillText(NET.active ? ('EN LIGNE · salle ' + NET.code + ' · vous êtes P' + (NET.me + 1) + ' · ping ' + Math.round(NET.rtt) + ' ms · délai ' + NET.delay + ' frames' + (cur.done ? ' · en attente de l\'adversaire…' : '')) : ((game.mode === '1p' ? 'Choisissez P1 puis l\'adversaire IA' : 'P1 puis P2 choisissent') + (game.notice ? '   —   ' + game.notice : '')), W / 2, 445);
   c.fillText(controlsLine(pi), W / 2, 470);
   c.fillText('Bloquer : reculer · Bloquer bas : accroupi + reculer · Balayette : accroupi + pied · Anti-air : accroupi + lourd · Échap : retour', W / 2, 495);
   inputs.forEach(i => i.poll());
+  if (NET.active) {
+    const inp = inputs[0];
+    if (!cur.done) {
+      if (inp.pressed('left')) { cur.idx = (cur.idx + 3) % 4; SFX.select(); netSend({ t: 'sel', idx: cur.idx }); }
+      if (inp.pressed('right')) { cur.idx = (cur.idx + 1) % 4; SFX.select(); netSend({ t: 'sel', idx: cur.idx }); }
+      if (inp.pressed('L') || inp.pressed('H') || inp.pressed('K') || inp.pressed('start') || inp.pressed('S')) { cur.done = true; SFX.confirm(); netSend({ t: 'ok', idx: cur.idx }); netTryStart(); }
+    }
+    return;
+  }
   const inp = game.mode === '2p' ? inputs[game.selTurn] : inputs[0];
   const alt = game.mode === '2p' ? null : inputs[1];
   const pr = a => inp.pressed(a) || (alt && alt.pressed(a));
@@ -1076,7 +1253,7 @@ function drawSelect(c) {
     }
   }
 }
-window.addEventListener('keydown', e => { if (keyCode(e) === 'Escape' && game.screen !== 'keys') { if (game.screen === 'select' || game.screen === 'result' || game.screen === 'fight' || game.screen === 'vs') { game.screen = 'title'; game.t = 0; musicStop(); } } });
+window.addEventListener('keydown', e => { if (keyCode(e) === 'Escape' && game.screen !== 'keys' && game.screen !== 'online') { if (game.screen === 'select' || game.screen === 'result' || game.screen === 'fight' || game.screen === 'vs') { if (NET.active) netClose(); game.screen = 'title'; game.t = 0; musicStop(); } } });
 function drawVS(c) {
   game.t++;
   const a = game.p[0].def, b = game.p[1].def;
@@ -1100,8 +1277,9 @@ function drawResult(c) {
   c.textAlign = 'center'; c.font = 'bold 70px Cinzel, Impact'; c.lineWidth = 10; c.strokeStyle = '#000';
   c.strokeText(w.def.name + ' TRIOMPHE', W / 2, 70); c.fillStyle = '#ffd21e'; c.fillText(w.def.name + ' TRIOMPHE', W / 2, 70);
   c.font = 'bold 30px Cinzel, Impact'; c.fillStyle = fac.color; c.fillText('VICTOIRE DES ' + fac.name, W / 2, 460);
-  if (Math.floor(game.t / 30) % 2 === 0) { c.font = '20px Arial'; c.fillStyle = '#fff'; c.fillText('ENTRÉE : rejouer   ·   Échap : titre', W / 2, 505); }
+  if (Math.floor(game.t / 30) % 2 === 0) { c.font = '20px Arial'; c.fillStyle = '#fff'; c.fillText(NET.active && NET.again[NET.me] ? 'En attente de l\'adversaire…' : 'ENTRÉE : rejouer   ·   Échap : titre', W / 2, 505); }
   inputs.forEach(i => i.poll());
+  if (NET.active) { if (game.t > 40 && !NET.again[NET.me] && inputs[0] && (inputs[0].pressed('start') || inputs[0].pressed('L') || inputs[0].pressed('H') || inputs[0].pressed('K'))) { NET.again[NET.me] = true; netSend({ t: 'again' }); netTryAgain(); } return; }
   if (game.t > 40 && inputs.some(i => i.pressed('start') || i.pressed('L') || i.pressed('H') || i.pressed('K'))) {
     game.screen = 'select'; game.sel = [{ idx: game.sel[0].idx, done: false }, { idx: game.sel[1].idx, done: false }]; game.selTurn = 0; game.t = 0; SFX.confirm();
   }
@@ -1113,11 +1291,12 @@ function frame(now) {
   acc += Math.min(100, now - last); last = now;
   while (acc >= STEP) {
     acc -= STEP;
-    if (game.screen === 'fight') { game.t++; updateFight(); }
+    if (game.screen === 'fight') { game.t++; if (updateFight() === false) { acc = Math.min(acc, STEP * 3); break; } }
   }
   switch (game.screen) {
     case 'title': drawTitle(ctx); break;
     case 'keys': drawKeys(ctx); break;
+    case 'online': drawOnline(ctx); break;
     case 'select': drawSelect(ctx); break;
     case 'vs': drawVS(ctx); break;
     case 'fight': drawFight(ctx); break;
