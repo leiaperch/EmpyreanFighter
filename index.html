@@ -16,6 +16,7 @@
 <div id="wrap"><canvas id="c" width="960" height="540"></canvas></div>
 <div id="hint"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<script src="assets/anim_meta.js"></script>
 <script>
 'use strict';
 // =====================================================================
@@ -34,20 +35,41 @@ const ASSETS = {
     loyalists: 'assets/stage_loyalists.jpg',
   },
   portraits: {
-    kael: 'assets/portrait_kael.jpg',
-    mira: 'assets/portrait_mira.jpg',
-    drace: 'assets/portrait_drace.jpg',
-    seraph: 'assets/portrait_seraph.jpg',
+    eira: 'assets/portrait_eira.jpg',
+    dante: 'assets/portrait_dante.jpg',
+    saerynn: 'assets/portrait_saerynn.jpg',
+    cassius: 'assets/portrait_cassius.jpg',
   },
   music: 'assets/theme.mp3',
 };
 const IMG = {};
+// En bundle mono-fichier, build.py injecte window.ASSET_DATA = { 'assets/…': 'data:…' }
+function assetUrl(p) { return (window.ASSET_DATA && window.ASSET_DATA[p]) || p; }
 function loadImg(key, src) {
   const im = new Image();
   im.onload = () => { IMG[key] = im; };
   im.onerror = () => { /* fallback procédural */ };
-  im.src = src;
+  im.src = assetUrl(src);
 }
+// ---- Animations : 9 actions × 8 frames par personnage, 8 VFX × 8 frames
+const ANIM_ACTIONS = ['idle', 'walk', 'light', 'heavy', 'kick', 'jump', 'hurt', 'special', 'super'];
+const VFX_NAMES = ['shockwave', 'eruption', 'lava_aura', 'shards', 'spikes', 'shadow', 'slash', 'hit'];
+const ANIM = {}, VFX = {}, META = window.ANIM_META || {};
+let assetsTotal = 0, assetsDone = 0;
+function loadFrame(path) {
+  assetsTotal++; const im = new Image();
+  im.onload = () => assetsDone++; im.onerror = () => assetsDone++;
+  im.src = assetUrl(path); return im;
+}
+function loadAnims() {
+  ['eira', 'dante', 'saerynn', 'cassius'].forEach(ch => {
+    ANIM[ch] = {};
+    ANIM_ACTIONS.forEach(a => { ANIM[ch][a] = []; for (let i = 1; i <= 8; i++) ANIM[ch][a].push(loadFrame('assets/anim/' + ch + '/' + a + '/f' + i + '.webp')); });
+  });
+  VFX_NAMES.forEach(v => { VFX[v] = []; for (let i = 1; i <= 8; i++) VFX[v].push(loadFrame('assets/vfx/' + v + '/f' + i + '.webp')); });
+}
+loadAnims();
+function frameReady(im) { return im && im.complete && im.naturalWidth > 0; }
 if (document.fonts) { document.fonts.load('900 66px "Cinzel Decorative"'); document.fonts.load('700 30px Cinzel'); }
 for (const k in ASSETS.stages) loadImg('stage_' + k, ASSETS.stages[k]);
 for (const k in ASSETS.portraits) loadImg('portrait_' + k, ASSETS.portraits[k]);
@@ -57,7 +79,7 @@ let actx = null, musicEl = null, musicOn = true, musicWanted = false;
 function audioInit() {
   if (actx) return;
   try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
-  musicEl = new Audio(ASSETS.music);
+  musicEl = new Audio(assetUrl(ASSETS.music));
   musicEl.loop = true; musicEl.volume = 0.45;
   musicEl.onerror = () => { musicEl = null; };
 }
@@ -232,85 +254,71 @@ window.addEventListener('load', () => { canvas.focus(); updateHint(); });
 // ---------------------------------------------------------------- Personnages
 // Frame data en frames (60 Hz). box = {x,y,w,h} relatif au point pied/centre, x positif = vers l'avant.
 // Toutes les valeurs numériques sont des hypothèses d'équilibrage — voir GDD.md.
+// Frame data en frames (60 Hz). box = {x,y,w,h} relatif au point pied/centre, x positif = vers l'avant.
+// anim = action de sprite ('light','heavy','kick','special','super'). frames = [k1,k2] : startup → 0..k1,
+// active → k1+1..k2, recovery → k2+1..7. Toutes les valeurs sont des hypothèses d'équilibrage (voir GDD.md).
+function normals(reach, o) {
+  const r = reach; o = o || {};
+  return {
+    L:  { name: o.L || 'Coup rapide', dmg: 55,  startup: 5,  active: 3,  recovery: 9,  box: { x: 24, y: -132, w: 60 + r, h: 32 }, hitstun: 14, blockstun: 8, kb: 3.5, anim: 'light', hi: true },
+    H:  { name: o.H || 'Coup lourd',  dmg: 120, startup: 11, active: 4,  recovery: 18, box: { x: 26, y: -150, w: 70 + r, h: 60 }, hitstun: 24, blockstun: 12, kb: 7, anim: 'heavy', overhead: true },
+    K:  { name: o.K || 'Balayage',    dmg: 85,  startup: 8,  active: 4,  recovery: 14, box: { x: 26, y: -60, w: 76 + r, h: 50 }, hitstun: 18, blockstun: 10, kb: 6, anim: 'kick', low: true },
+    cL: { name: 'Coup bas',       dmg: 45,  startup: 5,  active: 3,  recovery: 9,  box: { x: 22, y: -80, w: 58 + r, h: 30 }, hitstun: 12, blockstun: 7, kb: 3, anim: 'light', low: true },
+    cH: { name: 'Coup montant',   dmg: 110, startup: 7,  active: 5,  recovery: 20, box: { x: 10, y: -175, w: 60 + r, h: 80 }, hitstun: 26, blockstun: 12, kb: 4, launch: -9, anim: 'heavy' },
+    cK: { name: 'Fauchage',       dmg: 90,  startup: 8,  active: 4,  recovery: 18, box: { x: 20, y: -42, w: 86 + r, h: 34 }, hitstun: 24, blockstun: 12, kb: 5, anim: 'kick', low: true, knockdown: true },
+    jL: { name: 'Coup aérien',    dmg: 60,  startup: 4,  active: 8,  recovery: 6,  box: { x: 10, y: -120, w: 60 + r, h: 44 }, hitstun: 16, blockstun: 9, kb: 3, anim: 'light', overhead: true },
+    jK: { name: 'Pied plongeant', dmg: 95,  startup: 6,  active: 10, recovery: 6,  box: { x: 14, y: -100, w: 70 + r, h: 48 }, hitstun: 20, blockstun: 11, kb: 5, anim: 'kick', overhead: true },
+  };
+}
 const CHARS = {
-  kael: {
-    id: 'kael', name: 'KAEL', faction: 'rebels', title: 'Le Poing de la Rue',
-    hp: 1000, walk: 4.3, jumpV: -14.5, gravity: 0.72, scale: 1.0,
-    colors: { skin: '#e2b48c', hair: '#1b1b22', top: '#5b6b3a', pants: '#2a2a33', accent: '#d8262c', glove: '#c9c1b5' },
-    style: { hair: 'mohawk', armor: false, build: 1.0 },
-    moves: {
-      L:  { name: 'Jab',        dmg: 55,  startup: 4,  active: 3,  recovery: 8,  box: { x: 22, y: -128, w: 58, h: 30 }, hitstun: 14, blockstun: 8, kb: 3.5, anim: 'punch', hi: true },
-      H:  { name: 'Crochet',    dmg: 110, startup: 9,  active: 4,  recovery: 16, box: { x: 26, y: -134, w: 68, h: 40 }, hitstun: 22, blockstun: 12, kb: 7, anim: 'hpunch' },
-      K:  { name: 'Coup de pied', dmg: 85, startup: 7, active: 4, recovery: 13, box: { x: 26, y: -110, w: 74, h: 36 }, hitstun: 18, blockstun: 10, kb: 6, anim: 'kick' },
-      cL: { name: 'Jab bas',    dmg: 45,  startup: 4,  active: 3,  recovery: 8,  box: { x: 20, y: -78, w: 56, h: 28 }, hitstun: 12, blockstun: 7, kb: 3, anim: 'cpunch', low: true },
-      cH: { name: 'Uppercut',   dmg: 120, startup: 6,  active: 5,  recovery: 20, box: { x: 10, y: -170, w: 56, h: 70 }, hitstun: 26, blockstun: 12, kb: 4, launch: -9, anim: 'upper' },
-      cK: { name: 'Balayette',  dmg: 90,  startup: 8,  active: 4,  recovery: 18, box: { x: 20, y: -40, w: 84, h: 32 }, hitstun: 24, blockstun: 12, kb: 5, anim: 'sweep', low: true, knockdown: true },
-      jL: { name: 'Jab aérien', dmg: 60,  startup: 4,  active: 8,  recovery: 6,  box: { x: 10, y: -120, w: 56, h: 40 }, hitstun: 16, blockstun: 9, kb: 3, anim: 'jpunch', overhead: true },
-      jK: { name: 'Pied aérien', dmg: 95, startup: 6,  active: 10, recovery: 6,  box: { x: 14, y: -100, w: 70, h: 44 }, hitstun: 20, blockstun: 11, kb: 5, anim: 'jkick', overhead: true },
-      special: { name: 'TEMPÊTE DE RUE', kind: 'dash', dmg: 140, startup: 8, active: 14, recovery: 18, box: { x: 10, y: -140, w: 80, h: 60 }, hitstun: 26, blockstun: 14, kb: 9, dash: 9, anim: 'dashpunch', meterGain: 90 },
-      super:   { name: 'ÉMEUTE', kind: 'dash', dmg: 320, startup: 6, active: 30, recovery: 24, box: { x: 10, y: -150, w: 90, h: 80 }, hitstun: 34, blockstun: 18, kb: 12, dash: 10, multi: 6, anim: 'dashpunch', knockdown: true },
-    },
+  eira: {
+    id: 'eira', name: 'EIRA', faction: 'rebels', title: 'Half Caster',
+    hp: 1050, walk: 3.8, jumpV: -14.5, gravity: 0.72, scale: 1.0, anim: true,
+    colors: { skin: '#e2b48c', hair: '#1b1b22', top: '#4a3628', pants: '#2a2a33', accent: '#c2262e', glove: '#6b4a32' },
+    style: { hair: 'short', armor: false, build: 1.0 },
+    moves: Object.assign(normals(14, { L: 'Pique de hache', H: 'Fendoir', K: 'Balayage' }), {
+      special: { name: 'ONDE DE CHOC', kind: 'projectile', dmg: 120, startup: 22, active: 2, recovery: 22, hitstun: 26, blockstun: 12, kb: 8, frames: [3, 5], anim: 'special', meterGain: 90, knockdown: true,
+                 proj: { vfx: 'shockwave', speed: 6.5, w: 120, h: 80, y: -42, life: 64, color: '#ffb060', gravity: 0, vy: 0, ground: true, scale: 0.5 } },
+      super:   { name: 'SÉISME', kind: 'slam', dmg: 320, startup: 26, active: 10, recovery: 30, box: { x: -230, y: -110, w: 460, h: 110 }, hitstun: 40, blockstun: 20, kb: 14, frames: [3, 5], anim: 'super', armor: true, knockdown: true, quake: true },
+    }),
   },
-  mira: {
-    id: 'mira', name: 'MIRA', faction: 'rebels', title: 'La Saboteuse',
-    hp: 900, walk: 3.9, jumpV: -15, gravity: 0.7, scale: 0.94,
-    colors: { skin: '#f0c9a8', hair: '#e8712a', top: '#3a2c2c', pants: '#4a3b2b', accent: '#d8262c', glove: '#7a5230' },
-    style: { hair: 'short', armor: false, build: 0.85 },
-    moves: {
-      L:  { name: 'Gifle',      dmg: 50,  startup: 4,  active: 3,  recovery: 8,  box: { x: 22, y: -128, w: 56, h: 30 }, hitstun: 14, blockstun: 8, kb: 3.5, anim: 'punch', hi: true },
-      H:  { name: 'Coup de coude', dmg: 100, startup: 8, active: 4, recovery: 15, box: { x: 22, y: -134, w: 60, h: 40 }, hitstun: 22, blockstun: 12, kb: 7, anim: 'hpunch' },
-      K:  { name: 'Coup de pied haut', dmg: 90, startup: 7, active: 4, recovery: 14, box: { x: 24, y: -140, w: 78, h: 44 }, hitstun: 20, blockstun: 10, kb: 6, anim: 'hkick' },
-      cL: { name: 'Pique',      dmg: 40,  startup: 4,  active: 3,  recovery: 8,  box: { x: 20, y: -78, w: 54, h: 28 }, hitstun: 12, blockstun: 7, kb: 3, anim: 'cpunch', low: true },
-      cH: { name: 'Genou',      dmg: 100, startup: 7,  active: 5,  recovery: 18, box: { x: 10, y: -160, w: 50, h: 60 }, hitstun: 24, blockstun: 12, kb: 4, launch: -8, anim: 'upper' },
-      cK: { name: 'Fauchage',   dmg: 85,  startup: 8,  active: 4,  recovery: 18, box: { x: 20, y: -40, w: 86, h: 32 }, hitstun: 24, blockstun: 12, kb: 5, anim: 'sweep', low: true, knockdown: true },
-      jL: { name: 'Gifle aérienne', dmg: 55, startup: 4, active: 8, recovery: 6, box: { x: 10, y: -120, w: 54, h: 40 }, hitstun: 16, blockstun: 9, kb: 3, anim: 'jpunch', overhead: true },
-      jK: { name: 'Pied plongeant', dmg: 90, startup: 6, active: 10, recovery: 6, box: { x: 14, y: -96, w: 66, h: 48 }, hitstun: 20, blockstun: 11, kb: 5, anim: 'jkick', overhead: true },
-      special: { name: 'CHARGE ÉCLAIR', kind: 'projectile', dmg: 110, startup: 12, active: 2, recovery: 22, hitstun: 24, blockstun: 12, kb: 7, proj: { speed: 6.5, w: 40, h: 34, y: -80, life: 140, color: '#ff8a2a', gravity: 0.18, vy: -4 }, anim: 'throw', meterGain: 80 },
-      super:   { name: 'FEU D\'ARTIFICE', kind: 'projectile', dmg: 280, startup: 14, active: 2, recovery: 30, hitstun: 40, blockstun: 20, kb: 13, proj: { speed: 5, w: 70, h: 60, y: -100, life: 200, color: '#ffd21e', gravity: 0, vy: 0, multi: 3 }, anim: 'throw', knockdown: true },
-    },
+  dante: {
+    id: 'dante', name: 'DANTE', faction: 'rebels', title: 'Warrior',
+    hp: 1150, walk: 3.1, jumpV: -13.5, gravity: 0.76, scale: 1.06, anim: true,
+    colors: { skin: '#d9a984', hair: '#1b1b22', top: '#3a2c24', pants: '#2a2220', accent: '#ff6a1a', glove: '#5a3a2a' },
+    style: { hair: 'short', armor: true, build: 1.15 },
+    moves: Object.assign(normals(30, { L: 'Estoc', H: 'Fendoir colossal', K: 'Balayage' }), {
+      special: { name: 'ÉRUPTION', kind: 'slam', dmg: 170, startup: 20, active: 8, recovery: 26, box: { x: 30, y: -170, w: 150, h: 170 }, hitstun: 30, blockstun: 16, kb: 10, frames: [3, 5], anim: 'special', armor: true, meterGain: 100, knockdown: true, eruption: true },
+      super:   { name: 'FORME DE LAVE', kind: 'transform', dmg: 0, startup: 56, active: 1, recovery: 10, frames: [6, 7], anim: 'super', armor: true },
+    }),
   },
-  drace: {
-    id: 'drace', name: 'DRACE', faction: 'loyalists', title: 'Le Marteau de la Couronne',
-    hp: 1200, walk: 2.9, jumpV: -13, gravity: 0.78, scale: 1.14,
-    colors: { skin: '#d9a984', hair: '#8f9299', top: '#23448f', pants: '#1a2a55', accent: '#e8b53a', glove: '#e8b53a' },
-    style: { hair: 'buzz', armor: true, build: 1.25 },
-    moves: {
-      L:  { name: 'Coup droit', dmg: 70,  startup: 6,  active: 3,  recovery: 11, box: { x: 26, y: -134, w: 64, h: 34 }, hitstun: 16, blockstun: 9, kb: 4, anim: 'punch', hi: true },
-      H:  { name: 'Marteau',    dmg: 150, startup: 13, active: 5,  recovery: 22, box: { x: 26, y: -150, w: 76, h: 60 }, hitstun: 28, blockstun: 14, kb: 9, anim: 'hpunch', overhead: true },
-      K:  { name: 'Botte',      dmg: 110, startup: 10, active: 4,  recovery: 18, box: { x: 26, y: -112, w: 84, h: 40 }, hitstun: 22, blockstun: 12, kb: 8, anim: 'kick' },
-      cL: { name: 'Coup bas',   dmg: 60,  startup: 6,  active: 3,  recovery: 11, box: { x: 22, y: -80, w: 62, h: 30 }, hitstun: 14, blockstun: 8, kb: 3.5, anim: 'cpunch', low: true },
-      cH: { name: 'Lancer céleste', dmg: 140, startup: 8, active: 6, recovery: 24, box: { x: 10, y: -180, w: 64, h: 80 }, hitstun: 28, blockstun: 14, kb: 4, launch: -10, anim: 'upper' },
-      cK: { name: 'Faucheuse',  dmg: 110, startup: 10, active: 5,  recovery: 22, box: { x: 22, y: -42, w: 92, h: 34 }, hitstun: 26, blockstun: 13, kb: 6, anim: 'sweep', low: true, knockdown: true },
-      jL: { name: 'Coude aérien', dmg: 75, startup: 5, active: 8, recovery: 7, box: { x: 10, y: -124, w: 60, h: 44 }, hitstun: 18, blockstun: 10, kb: 4, anim: 'jpunch', overhead: true },
-      jK: { name: 'Botte aérienne', dmg: 115, startup: 7, active: 10, recovery: 8, box: { x: 14, y: -100, w: 76, h: 50 }, hitstun: 22, blockstun: 12, kb: 6, anim: 'jkick', overhead: true },
-      special: { name: 'MARTEAU IMPÉRIAL', kind: 'slam', dmg: 180, startup: 16, active: 6, recovery: 26, box: { x: 10, y: -150, w: 96, h: 110 }, hitstun: 30, blockstun: 16, kb: 10, armor: true, anim: 'slam', meterGain: 100, knockdown: true },
-      super:   { name: 'JUGEMENT ROYAL', kind: 'slam', dmg: 360, startup: 14, active: 8, recovery: 34, box: { x: -40, y: -60, w: 260, h: 60 }, hitstun: 40, blockstun: 20, kb: 14, armor: true, anim: 'slam', shockwave: true, knockdown: true },
-    },
-  },
-  seraph: {
-    id: 'seraph', name: 'SERAPH', faction: 'loyalists', title: 'La Lame Solaire',
-    hp: 1000, walk: 3.6, jumpV: -14.5, gravity: 0.72, scale: 1.0,
-    colors: { skin: '#f3d3b9', hair: '#f2f0ea', top: '#2b56b3', pants: '#e9ecf5', accent: '#e8b53a', glove: '#e8b53a' },
+  saerynn: {
+    id: 'saerynn', name: 'SAERYNN', faction: 'loyalists', title: 'Caster',
+    hp: 1000, walk: 3.6, jumpV: -14.5, gravity: 0.72, scale: 1.0, anim: true,
+    colors: { skin: '#f3d3b9', hair: '#f2f0ea', top: '#6a1a1a', pants: '#3a1414', accent: '#c8c8d0', glove: '#8a2020' },
     style: { hair: 'braid', armor: true, build: 0.9 },
-    moves: {
-      L:  { name: 'Pique',      dmg: 55,  startup: 4,  active: 3,  recovery: 9,  box: { x: 22, y: -130, w: 60, h: 30 }, hitstun: 14, blockstun: 8, kb: 3.5, anim: 'punch', hi: true },
-      H:  { name: 'Taille',     dmg: 115, startup: 9,  active: 4,  recovery: 16, box: { x: 24, y: -140, w: 74, h: 44 }, hitstun: 22, blockstun: 12, kb: 7, anim: 'hpunch' },
-      K:  { name: 'Croissant',  dmg: 90,  startup: 8,  active: 4,  recovery: 14, box: { x: 26, y: -136, w: 80, h: 44 }, hitstun: 20, blockstun: 10, kb: 6, anim: 'hkick' },
-      cL: { name: 'Pique basse', dmg: 45, startup: 4,  active: 3,  recovery: 9,  box: { x: 20, y: -78, w: 58, h: 28 }, hitstun: 12, blockstun: 7, kb: 3, anim: 'cpunch', low: true },
-      cH: { name: 'Ascension',  dmg: 115, startup: 6,  active: 5,  recovery: 20, box: { x: 10, y: -170, w: 56, h: 70 }, hitstun: 26, blockstun: 12, kb: 4, launch: -9, anim: 'upper' },
-      cK: { name: 'Fauchage',   dmg: 85,  startup: 8,  active: 4,  recovery: 18, box: { x: 20, y: -40, w: 86, h: 32 }, hitstun: 24, blockstun: 12, kb: 5, anim: 'sweep', low: true, knockdown: true },
-      jL: { name: 'Pique aérienne', dmg: 60, startup: 4, active: 8, recovery: 6, box: { x: 10, y: -120, w: 56, h: 40 }, hitstun: 16, blockstun: 9, kb: 3, anim: 'jpunch', overhead: true },
-      jK: { name: 'Croissant aérien', dmg: 95, startup: 6, active: 10, recovery: 6, box: { x: 14, y: -100, w: 70, h: 46 }, hitstun: 20, blockstun: 11, kb: 5, anim: 'jkick', overhead: true },
-      special: { name: 'LANCE SOLAIRE', kind: 'projectile', dmg: 100, startup: 11, active: 2, recovery: 20, hitstun: 22, blockstun: 12, kb: 7, proj: { speed: 9, w: 56, h: 22, y: -110, life: 120, color: '#ffe680', gravity: 0, vy: 0 }, anim: 'throw', meterGain: 80 },
-      super:   { name: 'AUBE ÉTERNELLE', kind: 'beam', dmg: 300, startup: 16, active: 26, recovery: 30, box: { x: 10, y: -150, w: 900, h: 70 }, hitstun: 40, blockstun: 20, kb: 14, multi: 5, anim: 'beam', knockdown: true },
-    },
+    moves: Object.assign(normals(24, { L: 'Estoc', H: 'Taille descendante', K: 'Balayage' }), {
+      special: { name: 'ÉCLATS D\'ACIER', kind: 'projectile', dmg: 105, startup: 18, active: 2, recovery: 20, hitstun: 22, blockstun: 12, kb: 7, frames: [3, 5], anim: 'special', meterGain: 80,
+                 proj: { vfx: 'shards', speed: 9, w: 96, h: 44, y: -112, life: 72, color: '#dfe6ff', gravity: 0, vy: 0, scale: 0.42 } },
+      super:   { name: 'FORÊT DE LAMES', kind: 'spikes', dmg: 300, startup: 28, active: 30, recovery: 30, box: { x: 20, y: -140, w: 560, h: 140 }, hitstun: 40, blockstun: 20, kb: 14, frames: [3, 6], anim: 'super', multi: 5, knockdown: true },
+    }),
+  },
+  cassius: {
+    id: 'cassius', name: 'CASSIUS', faction: 'loyalists', title: 'Half Caster',
+    hp: 950, walk: 4.3, jumpV: -15, gravity: 0.7, scale: 1.0, anim: true,
+    colors: { skin: '#f0c9a8', hair: '#e8d28a', top: '#3a3a44', pants: '#2a2a2e', accent: '#5a3a8a', glove: '#8a8a94' },
+    style: { hair: 'short', armor: true, build: 0.95 },
+    moves: Object.assign(normals(22, { L: 'Estoc d\'ombre', H: 'Taille noire', K: 'Balayage' }), {
+      special: { name: 'PAS D\'OMBRE', kind: 'dash', dmg: 140, startup: 10, active: 12, recovery: 18, box: { x: 10, y: -150, w: 100, h: 90 }, hitstun: 26, blockstun: 14, kb: 9, dash: 11, frames: [1, 4], anim: 'special', meterGain: 90, trail: true },
+      super:   { name: 'NUIT TOMBÉE', kind: 'dash', dmg: 330, startup: 14, active: 36, recovery: 26, box: { x: 10, y: -160, w: 110, h: 110 }, hitstun: 36, blockstun: 18, kb: 12, dash: 6, multi: 6, frames: [1, 5], anim: 'super', trail: true, knockdown: true, nightfall: true },
+    }),
   },
 };
 const FACTIONS = {
-  rebels:    { name: 'REBELLES',   color: '#c2262e', dark: '#2a0507', chars: ['kael', 'mira'], stage: 'rebels' },
-  loyalists: { name: 'LOYALISTES', color: '#4f86e6', dark: '#070f2a', chars: ['drace', 'seraph'], stage: 'loyalists' },
+  rebels:    { name: 'REBELLES',   color: '#c2262e', dark: '#2a0507', chars: ['eira', 'dante'], stage: 'rebels' },
+  loyalists: { name: 'LOYALISTES', color: '#4f86e6', dark: '#070f2a', chars: ['saerynn', 'cassius'], stage: 'loyalists' },
 };
-const ROSTER = ['kael', 'mira', 'drace', 'seraph'];
+const ROSTER = ['eira', 'dante', 'saerynn', 'cassius'];
 const METER_MAX = 300;
 
 // ---------------------------------------------------------------- Effets
@@ -323,6 +331,31 @@ function spark(x, y, color, n, big) {
   }
 }
 function floatText(x, y, str, color) { texts.push({ x, y, str, color, life: 40 }); }
+// ---- VFX en frames (planches Artlist, alpha = luminance → rendu additif)
+const vfxList = [];
+function spawnVfx(name, x, y, o) {
+  o = o || {};
+  vfxList.push({ name, x, y, scale: o.scale || 1, flip: o.flip || 1, dur: o.dur || 3, t: 0, loop: !!o.loop, life: o.life || 0,
+    add: o.add !== false, rot: o.rot || 0, anchor: o.anchor || 'center', follow: o.follow || null, dy: o.dy || 0, alpha: o.alpha || 1 });
+}
+function drawVfxFrame(c, name, i, x, y, o) {
+  const img = VFX[name] && VFX[name][((i % 8) + 8) % 8]; if (!frameReady(img)) return;
+  const sc = o.scale || 1, w = img.naturalWidth * sc, h = img.naturalHeight * sc;
+  c.save(); c.translate(x, y); c.scale(o.flip || 1, 1); if (o.rot) c.rotate(o.rot);
+  c.globalCompositeOperation = o.add === false ? 'source-over' : 'lighter'; c.globalAlpha = o.alpha == null ? 1 : o.alpha;
+  c.drawImage(img, -w / 2, o.anchor === 'bottom' ? -h : -h / 2, w, h);
+  c.restore();
+}
+function updateDrawVfx(c) {
+  for (let i = vfxList.length - 1; i >= 0; i--) {
+    const v = vfxList[i]; v.t++;
+    let fi = Math.floor(v.t / v.dur);
+    if (v.loop) { if (v.life > 0 && v.t > v.life) { vfxList.splice(i, 1); continue; } fi = fi % 8; }
+    else if (fi >= 8) { vfxList.splice(i, 1); continue; }
+    if (v.follow) { v.x = v.follow.x; v.y = v.follow.y + v.dy; }
+    drawVfxFrame(c, v.name, fi, v.x, v.y, v);
+  }
+}
 
 // ---------------------------------------------------------------- Projectile
 class Projectile {
@@ -343,6 +376,12 @@ class Projectile {
   }
   box() { return { x: this.x - this.w / 2, y: this.y - this.h / 2, w: this.w, h: this.h }; }
   draw(c) {
+    if (this.move.proj.vfx) {
+      // frame qui progresse avec la durée de vie (onde qui s'éloigne, éclats qui se dispersent)
+      const fi = Math.min(7, Math.floor(this.t / Math.max(1, this.move.proj.life / 8)));
+      drawVfxFrame(c, this.move.proj.vfx, fi, this.x, this.move.proj.ground ? this.y + this.h / 2 : this.y, { flip: this.dir, scale: this.move.proj.scale || 1, anchor: this.move.proj.ground ? 'bottom' : 'center' });
+      return;
+    }
     c.save(); c.translate(this.x, this.y);
     c.shadowBlur = 24; c.shadowColor = this.color;
     if (this.move.kind === 'projectile' && this.move.proj.gravity) {
@@ -382,6 +421,7 @@ class Fighter {
     this.blockFlash = 0; this.hitFlash = 0; this.shake = 0; this.beam = null;
     this.fired = false; this.superFlash = 0;
     this.buf = null; this.bufT = 0; // entrée mise en mémoire pendant un coup (buffer)
+    this.transform = 0; this.walkDir = 1; this.ghosts = [];
   }
   get alive() { return this.hp > 0; }
   get busy() { return ['attack', 'hit', 'ko', 'knockdown', 'getup'].includes(this.state); }
@@ -430,6 +470,7 @@ class Fighter {
     if (this.blockFlash > 0) this.blockFlash--; if (this.hitFlash > 0) this.hitFlash--;
     if (this.superFlash > 0) this.superFlash--;
     if (this.comboTimer > 0) { this.comboTimer--; if (this.comboTimer === 0) this.comboHits = 0; }
+    if (this.transform > 0) { this.transform--; if (this.transform % 4 === 0) fx.push({ x: this.x + (Math.random() - 0.5) * 50, y: this.y - Math.random() * 150, vx: (Math.random() - 0.5), vy: -1 - Math.random() * 2, life: 18, color: '#ff8a2a', r: 3 }); }
     const ip = this.readInput(inp, opp);
     this.pushDir(ip);
     // buffer : un bouton pressé pendant la fin d'un coup est rejoué dès qu'on est libre
@@ -479,8 +520,8 @@ class Fighter {
         this.grounded = false; this.vy = this.def.jumpV; this.vx = ip.fwd ? this.def.walk * 1.1 * this.facing : ip.back ? -this.def.walk * 0.9 * this.facing : 0;
         this.state = 'jump'; this.t = 0; this.crouch = false; this.blocking = false; SFX.jump();
       } else if (!this.crouch) {
-        if (ip.fwd) { this.x += this.def.walk * this.facing; this.state = 'walk'; }
-        else if (ip.back) { this.x -= this.def.walk * 0.8 * this.facing; this.state = 'walk'; }
+        if (ip.fwd) { this.x += this.def.walk * (this.transform > 0 ? 1.15 : 1) * this.facing; this.state = 'walk'; this.walkDir = 1; }
+        else if (ip.back) { this.x -= this.def.walk * 0.8 * this.facing; this.state = 'walk'; this.walkDir = -1; }
         else this.state = 'idle';
       } else this.state = 'crouch';
     }
@@ -515,9 +556,27 @@ class Fighter {
       this.fired = true; game.projectiles.push(new Projectile(this, m));
     }
     if (m.kind === 'beam' && t === m.startup) { game.shake = 4; }
+    // ---- VFX liés au coup
+    if (t === m.startup) {
+      const f = this.facing, b = m.box;
+      if (['light', 'heavy', 'kick'].includes(m.anim) && b) {
+        const rot = m.anim === 'light' ? -1.1 : m.anim === 'heavy' ? 0.35 : 1.5;
+        spawnVfx('slash', this.x + f * (b.x + b.w * 0.55) * this.def.scale, this.y + (b.y + b.h / 2) * this.def.scale, { flip: f, rot, scale: m.anim === 'heavy' ? 0.42 : 0.3, dur: 2 });
+      }
+      if (m.eruption) spawnVfx('eruption', this.x + f * 95, this.y, { anchor: 'bottom', scale: 0.6, dur: 3 });
+      if (m.quake) { spawnVfx('shockwave', this.x + f * 60, this.y, { anchor: 'bottom', scale: 0.75, dur: 3, flip: f }); spawnVfx('shockwave', this.x - f * 60, this.y, { anchor: 'bottom', scale: 0.75, dur: 3, flip: -f }); game.shake = 16; game.flash = 6; }
+      if (m.kind === 'spikes') { for (let i = 0; i < 3; i++) spawnVfx('spikes', this.x + f * (110 + i * 150), this.y, { anchor: 'bottom', scale: 0.55, dur: 4 }); game.shake = 8; }
+      if (m.nightfall) { game.dark = 60; }
+    }
+    if (m.trail && t >= m.startup && t < m.startup + m.active && t % 3 === 0) {
+      spawnVfx('shadow', this.x - this.facing * 20, this.y - 90 * this.def.scale, { flip: -this.facing, scale: 0.45, dur: 2, add: false, alpha: 0.85 });
+      this.ghosts.push({ x: this.x, y: this.y, act: 'special', i: 3, life: 12 });
+    }
+    if (m.nightfall && t >= m.startup && t < m.startup + m.active && t % 6 === 0) spawnVfx('slash', this.x + this.facing * 70, this.y - 100, { flip: this.facing, rot: Math.random() * 3 - 1.5, scale: 0.4, dur: 2 });
+    if (m.kind === 'transform' && t === total - 1) { this.transform = 900; spawnVfx('eruption', this.x, this.y, { anchor: 'bottom', scale: 0.8, dur: 3 }); game.shake = 12; game.flash = 10; SFX.super(); }
     this.armor = !!m.armor && t < m.startup + m.active;
     // hitbox active ?
-    if (t >= m.startup && t < m.startup + m.active && m.kind !== 'projectile') {
+    if (t >= m.startup && t < m.startup + m.active && m.kind !== 'projectile' && m.box) {
       if (this.hitTimer > 0) this.hitTimer--;
       else if (this.hitsLeft > 0 && (!this.hitDone || m.multi)) {
         const hb = this.box(m.box);
@@ -545,7 +604,7 @@ class Fighter {
     }
     // scaling : chaque coup d'un combo inflige 12 % de moins, plancher 30 %
     const scale = Math.max(0.3, 1 - 0.12 * this.comboHits);
-    const perHit = m.multi ? m.dmg / m.multi : m.dmg;
+    const perHit = (m.multi ? m.dmg / m.multi : m.dmg) * (from.transform > 0 ? 1.3 : 1);
     this.hp -= Math.floor(perHit * scale); this.hitFlash = 6; this.meter = Math.min(METER_MAX, this.meter + Math.floor(m.dmg * 0.25));
     this.comboHits++; this.comboTimer = 45;
     this.state = 'hit'; this.t = 0; this.stun = m.hitstun; this.move = null; this.armor = false;
@@ -601,7 +660,66 @@ class Fighter {
       case 'beam': P.arms = [[1.6, 1.6], [1.5, 1.5]]; P.lean = lerp(-0.2, 0.1); P.legs = [[0.5, -0.2], [-0.4, 0.3]]; P.hip = 74; break;
     }
   }
+  // Choix de la frame : action + index + décalages, selon l'état de jeu
+  animFrame() {
+    const a = this.anim, vy = this.vy, jv = -this.def.jumpV;
+    const jumpIdx = () => Math.max(1, Math.min(6, 1 + Math.round(((vy + jv) / (2 * jv)) * 5)));
+    switch (this.state) {
+      case 'idle': return { act: 'idle', i: Math.floor(a / 7) % 8 };
+      case 'walk': { const i = Math.floor(a / 5) % 8; return { act: 'walk', i: this.walkDir > 0 ? i : 7 - i }; }
+      case 'crouch': return { act: 'kick', i: 1 };
+      case 'jump': return { act: 'jump', i: jumpIdx() };
+      case 'block': return this.crouch ? { act: 'kick', i: 1, dx: -4 } : { act: 'idle', i: 0, dx: -8 };
+      case 'hit': return this.grounded ? { act: 'hurt', i: this.stun > 8 ? 0 : 1 } : { act: 'hurt', i: vy < -2 ? 2 : vy < 4 ? 3 : 4 };
+      case 'knockdown': return { act: 'hurt', i: this.t < 6 ? 6 : 7 };
+      case 'getup': return this.t < 8 ? { act: 'hurt', i: 6 } : { act: 'kick', i: 1 };
+      case 'ko': return this.grounded ? { act: 'hurt', i: 7 } : { act: 'hurt', i: vy < 0 ? 3 : 4 };
+      case 'attack': {
+        const m = this.move, t = this.t, k = m.frames || [3, 5];
+        let i;
+        if (t < m.startup) i = Math.floor(t / m.startup * (k[0] + 1));
+        else if (t < m.startup + m.active) i = k[0] + 1 + Math.floor((t - m.startup) / m.active * (k[1] - k[0]));
+        else i = k[1] + 1 + Math.floor((t - m.startup - m.active) / Math.max(1, m.recovery) * (7 - k[1]));
+        if (m.multi && t >= m.startup && t < m.startup + m.active) i = k[0] + 1 + Math.floor((t - m.startup) / 4) % (k[1] - k[0]);
+        return { act: ANIM_ACTIONS.includes(m.anim) ? m.anim : 'light', i: Math.max(0, Math.min(7, i)) };
+      }
+    }
+    return { act: 'idle', i: 0 };
+  }
+  spriteScale(act) {
+    const meta = META[this.def.id]; if (!meta || !meta.idle || !meta[act]) return null;
+    const idleH = meta.idle[0].h, ref = { jump: 1, kick: 7 }[act] || 0;
+    const kAct = Math.max(0.8, Math.min(1.25, idleH / meta[act][ref].h));
+    return (200 * this.def.scale / idleH) * kAct;
+  }
+  drawSpriteFrame(c, act, i, x, y, alpha) {
+    const img = ANIM[this.def.id] && ANIM[this.def.id][act] && ANIM[this.def.id][act][i];
+    const k = this.spriteScale(act), meta = META[this.def.id];
+    if (!frameReady(img) || !k) return false;
+    const m = meta[act][i], w = m.w * k, h = m.h * k, ax = m.ax * k;
+    c.save(); c.translate(x, y); c.scale(this.facing, 1); if (alpha != null) c.globalAlpha = alpha;
+    c.drawImage(img, -ax, -h, w, h); c.restore(); return true;
+  }
   draw(c) {
+    if (this.def.anim && ANIM[this.def.id]) {
+      const fr = this.animFrame();
+      const bob = this.state === 'idle' ? Math.sin(this.anim * 0.12) * 1.5 : 0;
+      // ombre au sol
+      c.fillStyle = 'rgba(0,0,0,.35)'; c.beginPath(); c.ellipse(this.x, this.y + 2, 42 * this.def.scale, 8, 0, 0, Math.PI * 2); c.fill();
+      if (this.transform > 0) drawVfxFrame(c, 'lava_aura', Math.floor(this.anim / 3), this.x, this.y + 6, { anchor: 'bottom', scale: 0.5 + 0.02 * Math.sin(this.anim * 0.2), alpha: 0.85 });
+      for (let g = this.ghosts.length - 1; g >= 0; g--) { const gh = this.ghosts[g]; gh.life--; if (gh.life <= 0) { this.ghosts.splice(g, 1); continue; } this.drawSpriteFrame(c, gh.act, gh.i, gh.x, gh.y, gh.life / 24); }
+      c.save();
+      if (this.hitFlash > 0) c.filter = 'brightness(3)';
+      else if (this.superFlash > 0 && this.superFlash % 4 < 2) c.filter = 'brightness(1.8) saturate(2)';
+      else if (this.armor) c.filter = 'sepia(.5) saturate(2.5) brightness(1.1)';
+      else if (this.transform > 0) c.filter = 'saturate(1.7) hue-rotate(-12deg) brightness(1.12) contrast(1.1)';
+      const ok = this.drawSpriteFrame(c, fr.act, fr.i, this.x + this.facing * (fr.dx || 0), this.y - bob + (fr.dy || 0));
+      c.restore();
+      if (ok) return;
+    }
+    this.drawProc(c);
+  }
+  drawProc(c) {
     const d = this.def, col = d.colors, st = d.style, sc = d.scale, f = this.facing;
     const P = this.pose();
     const LA = 30 * sc, LL = 40 * sc, TORSO = 52 * sc, HEAD = 17 * sc;
@@ -719,7 +837,7 @@ class AI {
     // adversaire en l'air et proche → anti-air
     if (!opp.grounded && dist < 120 && opp.y < GROUND - 60 && this.cool <= 0) { raw.down = true; raw.H = true; this.cool = this.react + 10; return; }
     // super dispo
-    if (f.meter >= METER_MAX && this.cool <= 0 && (dist < 200 || f.def.moves.super.kind !== 'dash') && Math.random() < 0.02 * (this.level + 1)) {
+    if (f.meter >= METER_MAX && this.cool <= 0 && (dist < 200 || !['dash'].includes(f.def.moves.super.kind)) && Math.random() < 0.02 * (this.level + 1)) {
       raw.S = true; raw.down = true; this.cool = 60; return;
     }
     // adversaire à terre → se replacer
@@ -913,7 +1031,7 @@ const game = {
   screen: 'title', t: 0, mode: '1p', difficulty: 1, menu: 0, notice: '',
   sel: [{ idx: 0, done: false }, { idx: 3, done: false }], selTurn: 0,
   p: [null, null], projectiles: [], round: 1, timer: 99, timerAcc: 0,
-  hitstop: 0, shake: 0, flash: 0, banner: null, bannerT: 0, phase: 'intro', phaseT: 0,
+  hitstop: 0, shake: 0, flash: 0, dark: 0, banner: null, bannerT: 0, phase: 'intro', phaseT: 0,
   stage: 'rebels', winner: null, matchWinner: null,
   fireFrame: 0,
 };
@@ -933,7 +1051,7 @@ function startRound() {
   const m0 = game.p[0].meter, m1 = game.p[1].meter;
   game.p[0].reset(260, 1); game.p[1].reset(W - 260, -1);
   game.p[0].meter = m0; game.p[1].meter = m1;
-  game.projectiles = []; fx.length = 0; texts.length = 0;
+  game.projectiles = []; fx.length = 0; texts.length = 0; vfxList.length = 0; game.dark = 0;
   game.timer = 99; game.timerAcc = 0; game.phase = 'intro'; game.phaseT = 0; game.winner = null; game.hitstop = 0;
 }
 game.resolveHit = function (att, def, m, hb) {
@@ -952,13 +1070,14 @@ game.resolveHit = function (att, def, m, hb) {
   }
   const cx = Math.max(hb.x, def.hurtbox().x) + Math.min(hb.w, def.hurtbox().w) / 2, cy = hb.y + hb.h / 2;
   if (blocked) {
-    def.takeHit(att, m, true, hb); SFX.block(); spark(cx, cy, '#8fd3ff', 6);
+    def.takeHit(att, m, true, hb); SFX.block(); spark(cx, cy, '#8fd3ff', 6); spawnVfx('hit', cx, cy, { scale: 0.2, dur: 2 });
     att.meter = Math.min(METER_MAX, att.meter + 8);
     game.hitstop = 3;
   } else {
     def.takeHit(att, m, false, hb);
     const heavy = (m.multi ? m.dmg / m.multi : m.dmg) >= 100; heavy ? SFX.hitH() : SFX.hitL();
     spark(cx, cy, heavy ? '#ffb020' : '#ffe680', heavy ? 16 : 8, heavy);
+    spawnVfx('hit', cx, cy, { scale: heavy ? 0.5 : 0.32, dur: 2, rot: Math.random() * 6 });
     game.hitstop = m.multi ? 3 : heavy ? 9 : 5; game.shake = Math.max(game.shake, heavy ? 6 : 2);
     att.meter = Math.min(METER_MAX, att.meter + (m.meterGain || Math.floor(m.dmg * 0.4)));
     // défenseur au mur : c'est l'attaquant qui recule (évite l'enfermement dans le coin)
@@ -1110,6 +1229,8 @@ function drawFight(c) {
   const order = game.p[0].state === 'attack' ? [game.p[1], game.p[0]] : [game.p[0], game.p[1]];
   order.forEach(p => p.draw(c));
   game.projectiles.forEach(p => p.draw(c));
+  updateDrawVfx(c);
+  if (game.dark > 0) { c.fillStyle = 'rgba(10,0,25,' + (Math.min(30, game.dark) / 30) * 0.55 + ')'; c.fillRect(-20, -20, W + 40, H + 40); game.dark--; }
   // particules
   for (let i = fx.length - 1; i >= 0; i--) { const p = fx[i]; p.x += p.vx; p.y += p.vy; p.vy += 0.25; p.life--; if (p.life <= 0) { fx.splice(i, 1); continue; } c.globalAlpha = Math.min(1, p.life / 10); c.fillStyle = p.color; c.beginPath(); c.arc(p.x, p.y, p.r, 0, Math.PI * 2); c.fill(); }
   c.globalAlpha = 1;
@@ -1155,7 +1276,8 @@ function drawTitle(c) {
   });
   c.font = 'bold 20px Cinzel, Impact'; c.fillStyle = '#ccc'; c.fillText('DIFFICULTÉ IA :  ◀ ' + diffs[game.difficulty] + ' ▶   (gauche / droite)', W / 2, 450);
   c.font = '15px Arial'; c.fillStyle = '#9a9aa8'; c.fillText(controlsLine(0), W / 2, 478);
-  if (Math.floor(game.t / 30) % 2 === 0) { c.font = 'bold 22px Cinzel, Impact'; c.fillStyle = '#fff'; c.fillText('ENTRÉE / ESPACE pour valider', W / 2, 510); }
+  if (assetsDone < assetsTotal) { c.font = '14px Arial'; c.fillStyle = '#d4a92c'; c.fillText('Chargement des animations… ' + Math.floor(assetsDone / assetsTotal * 100) + ' %', W / 2, 496); }
+  else if (Math.floor(game.t / 30) % 2 === 0) { c.font = 'bold 22px Cinzel, Impact'; c.fillStyle = '#fff'; c.fillText('ENTRÉE / ESPACE pour valider', W / 2, 510); }
   inputs.forEach(i => i.poll());
   const any = a => inputs.some(i => i.pressed(a));
   if (any('up')) { game.menu = (game.menu + 3) % 4; SFX.select(); }

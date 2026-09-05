@@ -58,17 +58,31 @@ touches « Joueur 1 ».
 
 ## Roster
 
-| Faction      | Personnage | Style                        | Spécial                              | Super                        |
-|--------------|------------|------------------------------|--------------------------------------|------------------------------|
-| Rebelles     | KAEL       | Rushdown rapide, 1000 PV     | Tempête de rue — ruée poing          | Émeute — ruée 6 coups        |
-| Rebelles     | MIRA       | Zoneuse, 900 PV              | Charge éclair — bombe en cloche      | Feu d'artifice — 3 impacts   |
-| Loyalistes   | DRACE      | Lourd, 1200 PV, lent         | Marteau impérial — frappe avec armure| Jugement royal — onde de choc|
-| Loyalistes   | SERAPH     | Équilibrée, 1000 PV          | Lance solaire — projectile rapide    | Aube éternelle — rayon plein écran |
+| Faction    | Personnage | Rôle        | Arme / pouvoir                 | Spécial (↓↘→ + coup ou Spécial) | Super (jauge pleine, ↓ + Spécial)     |
+|------------|------------|-------------|--------------------------------|----------------------------------|----------------------------------------|
+| Rebelles   | EIRA       | Half Caster | Hache, ondes de choc           | Onde de choc (vague au sol)      | Séisme (onde des deux côtés)           |
+| Rebelles   | DANTE      | Warrior     | Énorme épée, monstre de lave   | Éruption (avec armure)           | Forme de lave (15 s : +30 % dégâts, aura) |
+| Loyalistes | SAERYNN    | Caster      | Épée longue, contrôle du métal | Éclats d'acier (projectile)      | Forêt de lames (pics sur 560 px)       |
+| Loyalistes | CASSIUS    | Half Caster | Épée noire, ombres             | Pas d'ombre (ruée)               | Nuit tombée (6 coups, écran assombri)  |
+
+Personnages créés sur Artlist par l'auteur ; planches d'animation (9 actions × 8 frames chacun)
+et VFX (8 effets × 8 frames) générés par image-à-image à partir de ces références.
+
+## Pipeline d'animation
+
+- `assets/sheets/anim/<perso>_<action>.png` : planches 2K, grille 4×2, fond vert (sources).
+- `python .claude/cut_sheet.py <planche> <perso> <action>` : chroma key, découpe par gouttières,
+  échelle uniforme, export WebP dans `assets/anim/<perso>/<action>/f1..f8.webp`.
+- `python .claude/cut_vfx.py assets/sheets/anim/vfx_<nom>.png <nom>` : VFX sur fond noir → alpha
+  par luminance (rendu additif) dans `assets/vfx/<nom>/`.
+- `python .claude/gen_meta.py` : manifeste `assets/anim_meta.js` (taille et ancrage de chaque frame).
+- `python .claude/build.py` : bundle mono-fichier avec tous les assets en data URI.
 
 ## Assets (générés avec Artlist)
 
 - `assets/stage_rebels.jpg`, `assets/stage_loyalists.jpg` — décors des deux factions.
-- `assets/portrait_*.jpg` — portraits de sélection.
+- `assets/portrait_*.jpg` — portraits de sélection (recadrés depuis les créations Artlist de l'auteur).
+- `assets/anim/`, `assets/vfx/` — frames d'animation et d'effets (WebP).
 - `assets/theme.mp3` — thème de combat (boucle de 30 s).
 
 Le jeu reste jouable sans ces fichiers (décor et portraits de repli dessinés par le code).

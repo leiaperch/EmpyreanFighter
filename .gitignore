@@ -4,3 +4,5 @@ Thumbs.db
 .DS_Store
 empyrean-fighter-standalone.html
 empyrean-fighter-artifact.html
+assets/sheets/
+.claude/tmp/

@@ -65,14 +65,21 @@ Réaction 34 / 20 / 9 frames, agressivité 0.3 / 0.5 / 0.75. Saute ou recule dev
 projectile, bloque (haut/bas selon le coup) à 55 % + 15 %/niveau, anti-air quand on saute,
 **pause forcée après 3 coups de combo** pour laisser une fenêtre de contre-attaque.
 
+## Animation et VFX
+Chaque action a 8 frames ; les coups mappent startup → frames 0..k1, active → k1+1..k2,
+recovery → k2+1..7 (`frames` par coup, défaut [3,5]). Les multi-hits bouclent sur la plage active.
+Le saut choisit sa frame d'après la vitesse verticale, la chute d'après `vy`, le sol d'après
+l'état (knockdown = frame 8 de `hurt`). VFX en rendu additif (`lighter`), déclenchés au
+premier frame actif du coup ; les projectiles VFX avancent leur frame avec leur durée de vie.
+
 ## Roster — leviers d'équilibrage
 
-| Perso  | PV   | Marche | Rôle       | Levier principal                         |
-|--------|------|--------|------------|------------------------------------------|
-| Kael   | 1000 | 4.3    | Rushdown   | Distance de la ruée (`dash × active`)    |
-| Mira   | 900  | 3.9    | Zoning     | Gravité / rebond de la bombe             |
-| Drace  | 1200 | 2.9    | Grappler   | Fenêtre d'armure, startup du marteau (16)|
-| Seraph | 1000 | 3.6    | Équilibrée | Vitesse de la lance (9)                  |
+| Perso   | PV   | Marche | Rôle        | Levier principal                                  |
+|---------|------|--------|-------------|---------------------------------------------------|
+| Eira    | 1050 | 3.8    | Half Caster | Vitesse / durée de l'onde de choc (6.5, 64 f)     |
+| Dante   | 1150 | 3.1    | Warrior     | Durée de la forme de lave (900 f), bonus ×1.3     |
+| Saerynn | 1000 | 3.6    | Caster      | Vitesse des éclats (9), portée des pics (560 px)  |
+| Cassius | 950  | 4.3    | Half Caster | Distance de la ruée (11 × 12 f), hits du super (6)|
 
 ## Playtest — critères de succès v0.1
 
@@ -83,6 +90,8 @@ projectile, bloque (haut/bas selon le coup) à 55 % + 15 %/niveau, anti-air quan
   bloquable debout ou accroupi.
 
 ## Changelog
+
+- 0.5 (2026-09-05) : roster final (Eira, Dante, Saerynn, Cassius), sprites animés 9 actions × 8 frames, VFX en frames, forme de lave de Dante.
 
 - 0.4 (2026-09-05) : mode en ligne P2P (PeerJS), écran Touches et préréglages clavier PC, buffer d'entrée.
 
