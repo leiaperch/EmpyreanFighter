@@ -5,7 +5,8 @@ Jeu de combat 2D dark fantasy, dans l'esprit de Street Fighter, jouable sur PC d
 
 ## Lancer le jeu
 
-- Ouvrir `index.html` dans le navigateur.
+- **En ligne : https://leiaperch.github.io/EmpyreanFighter/** (GitHub Pages, mode EN LIGNE inclus).
+- Ou ouvrir `index.html` dans le navigateur.
 - Écran titre : ↑/↓ choisit le mode (1 joueur vs IA / 2 joueurs), ←/→ la difficulté de l'IA,
   Entrée / Espace / Start lance la sélection.
 - Sélection : ←/→ pour choisir, n'importe quel bouton d'attaque pour valider. Échap : retour.
