@@ -340,7 +340,7 @@ function spawnVfx(name, x, y, o) {
 }
 function drawVfxFrame(c, name, i, x, y, o) {
   const img = VFX[name] && VFX[name][((i % 8) + 8) % 8]; if (!frameReady(img)) return;
-  const sc = o.scale || 1, w = img.naturalWidth * sc, h = img.naturalHeight * sc;
+  const sc = (o.scale || 1) / (window.VFX_DOWN || 1), w = img.naturalWidth * sc, h = img.naturalHeight * sc;   // VFX_DOWN : frames réduites dans la version Artifact
   c.save(); c.translate(x, y); c.scale(o.flip || 1, 1); if (o.rot) c.rotate(o.rot);
   c.globalCompositeOperation = o.add === false ? 'source-over' : 'lighter'; c.globalAlpha = o.alpha == null ? 1 : o.alpha;
   c.drawImage(img, -w / 2, o.anchor === 'bottom' ? -h : -h / 2, w, h);
