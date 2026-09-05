@@ -65,7 +65,7 @@ touches « Joueur 1 ».
 | Loyalistes | SAERYNN    | Caster      | Épée longue, contrôle du métal | Éclats d'acier (projectile)      | Forêt de lames (pics sur 560 px)       |
 | Loyalistes | CASSIUS    | Half Caster | Épée noire, ombres             | Pas d'ombre (ruée)               | Nuit tombée (6 coups, écran assombri)  |
 
-Personnages créés sur Artlist par l'auteur ; planches d'animation (9 actions × 8 frames chacun)
+Personnages créés sur Artlist par l'auteur ; planches d'animation (10 actions × 8 frames chacun, dont une marche arrière)
 et VFX (8 effets × 8 frames) générés par image-à-image à partir de ces références.
 
 ## Pipeline d'animation

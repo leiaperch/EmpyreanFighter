@@ -52,7 +52,7 @@ function loadImg(key, src) {
   im.src = assetUrl(src);
 }
 // ---- Animations : 9 actions × 8 frames par personnage, 8 VFX × 8 frames
-const ANIM_ACTIONS = ['idle', 'walk', 'light', 'heavy', 'kick', 'jump', 'hurt', 'special', 'super'];
+const ANIM_ACTIONS = ['idle', 'walk', 'walkback', 'light', 'heavy', 'kick', 'jump', 'hurt', 'special', 'super'];
 const VFX_NAMES = ['shockwave', 'eruption', 'lava_aura', 'shards', 'spikes', 'shadow', 'slash', 'hit'];
 const ANIM = {}, VFX = {}, META = window.ANIM_META || {};
 let assetsTotal = 0, assetsDone = 0;
@@ -666,7 +666,9 @@ class Fighter {
     const jumpIdx = () => Math.max(1, Math.min(6, 1 + Math.round(((vy + jv) / (2 * jv)) * 5)));
     switch (this.state) {
       case 'idle': return { act: 'idle', i: Math.floor(a / 7) % 8 };
-      case 'walk': { const i = Math.floor(a / 5) % 8; return { act: 'walk', i: this.walkDir > 0 ? i : 7 - i }; }
+      case 'walk': { const i = Math.floor(a / 5) % 8; const back = this.walkDir < 0, meta = META[this.def.id];
+        if (back && meta && meta.walkback) return { act: 'walkback', i };
+        return { act: 'walk', i: back ? 7 - i : i }; }
       case 'crouch': return { act: 'kick', i: 1 };
       case 'jump': return { act: 'jump', i: jumpIdx() };
       case 'block': return this.crouch ? { act: 'kick', i: 1, dx: -4 } : { act: 'idle', i: 0, dx: -8 };

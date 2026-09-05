@@ -91,6 +91,7 @@ premier frame actif du coup ; les projectiles VFX avancent leur frame avec leur 
 
 ## Changelog
 
+- 0.5.1 (2026-09-05) : animation de marche arrière dédiée (walkback).
 - 0.5 (2026-09-05) : roster final (Eira, Dante, Saerynn, Cassius), sprites animés 9 actions × 8 frames, VFX en frames, forme de lave de Dante.
 
 - 0.4 (2026-09-05) : mode en ligne P2P (PeerJS), écran Touches et préréglages clavier PC, buffer d'entrée.
